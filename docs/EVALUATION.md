@@ -35,3 +35,16 @@ The audio report may expose a synthetic/spoof-direction research-model indicator
 Use one case containing image OCR, sampled video-frame text, an audio transcript and investigator-supplied claim text. TruthLens compares each available pair using lexical token overlap and displays previews, shared terms and comparison scope. This is not semantic contradiction detection or fact verification. A human analyst must inspect original media and primary sources.
 
 The investigator review UI stores a decision and bounded rationale for each technical finding, scoped to the authenticated user and report. PDF export includes saved decisions, available reviewer metadata, timestamps, per-asset outputs, cross-modal comparisons and limitations. A saved finding decision is an analyst assessment of that finding, not a media-authenticity verdict.
+
+
+## Confidence and uncertainty reporting
+TruthLens must keep three concepts separate: the raw model score, the model's threshold-based signal direction, and the evidence-support/uncertainty assessment. A softmax score is not a calibrated probability or a confidence percentage.
+
+For every assessed media item, the API reports a separate uncertainty assessment based on:
+- Distance of the aggregate score from the modality decision threshold and whether the score falls in the ambiguous band.
+- Variation and disagreement among available face crops, sampled video frames, or speech windows.
+- Number of inference samples actually assessed.
+
+The assessment uses labels such as high, moderate and lower review uncertainty. These are heuristic evidence-review labels, not statistical confidence intervals or estimates of the probability of correctness. A single sample is marked as limited support. Mixed real-direction and fake-direction sample results increase uncertainty even when the aggregate median crosses a decision threshold.
+
+No model is labelled calibrated. Calibration requires a representative, independently labelled held-out validation dataset for that specific model and deployment domain, followed by reliability analysis and a documented calibration method. Do not claim calibrated confidence until that evaluation is completed.

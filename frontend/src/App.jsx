@@ -233,6 +233,7 @@ function exportPdf(report) {
       asset.model_assessment?.voice_synthesis_review ? "<h4>Synthetic / cloned-voice review indicator · research model</h4><p><b>Indicator:</b> " + esc(titleCase(asset.model_assessment.voice_synthesis_review.indicator)) + "</p><p><b>Model:</b> " + esc(asset.model_assessment.voice_synthesis_review.model || model.model_name || "Not recorded") + " · <b>Windows:</b> " + esc(safeValue("windows", asset.model_assessment.voice_synthesis_review.windows_assessed)) + " · <b>Median fake-direction score:</b> " + esc(safeValue("score", asset.model_assessment.voice_synthesis_review.median_fake_model_score)) + "</p><p class='muted'>" + esc(asset.model_assessment.voice_synthesis_review.note || "Not recorded") + "</p>" : "",
       asset.model_assessment?.audio_review_timeline ? "<h4>Audio review timeline</h4>" + objectTable(asset.model_assessment.audio_review_timeline) : "",
       asset.video_analysis?.temporal_forensics ? renderTemporal(asset.video_analysis.temporal_forensics) : "",
+      asset.uncertainty_assessment ? "<h4>Confidence and uncertainty assessment</h4><table class='data-table'><tr><th>Uncertainty level</th><td>" + esc(titleCase(asset.uncertainty_assessment.uncertainty_level)) + "</td></tr><tr><th>Signal separation</th><td>" + esc(titleCase(asset.uncertainty_assessment.signal_separation)) + "</td></tr><tr><th>Raw model score</th><td>" + esc(safeValue("score", asset.uncertainty_assessment.raw_model_score)) + " · Uncalibrated model output, not a confidence percentage</td></tr><tr><th>Evidence support</th><td>" + esc(asset.uncertainty_assessment.sample_support_label || "Not available") + " · " + esc(safeValue("samples", asset.uncertainty_assessment.sample_count)) + " sampled unit(s)</td></tr><tr><th>Within-sample score range</th><td>" + esc(safeValue("range", asset.uncertainty_assessment.sample_score_range?.range)) + "</td></tr><tr><th>Calibration</th><td>Not calibrated</td></tr></table><ul>" + (asset.uncertainty_assessment.reasons || []).map(reason => "<li>" + esc(reason) + "</li>").join("") + "</ul><p class='muted'>" + esc(asset.uncertainty_assessment.interpretation || "") + "</p>" : "",
       asset.video_analysis?.face_identity_consistency ? "<h4>Face consistency review</h4>" + objectTable(asset.video_analysis.face_identity_consistency) : ""
     ].join("");
     return "<section class='asset page-section'><div class='asset-title'><span class='eyebrow'>EVIDENCE ITEM " + String(index + 1).padStart(2, "0") +
@@ -409,6 +410,33 @@ function Pipeline({ loading, uploadProgress, report }) {
   </div>;
 }
 
+function UncertaintyAssessment({ assessment }) {
+  if (!assessment) return null;
+  const level = assessment.uncertainty_level || "high";
+  const labels = { lower: "Lower review uncertainty", moderate: "Moderate review uncertainty", high: "High review uncertainty" };
+  const reasons = assessment.reasons || [];
+  return <section className={"uncertainty-card uncertainty-" + level}>
+    <div className="uncertainty-heading">
+      <div><span className="section-kicker">CONFIDENCE & UNCERTAINTY</span><h4>Score separation and evidence support</h4></div>
+      <span className={"uncertainty-level " + level}>{labels[level] || "Uncertainty not available"}</span>
+    </div>
+    <div className="uncertainty-metrics">
+      <div><small>Signal separation</small><b>{String(assessment.signal_separation || "unavailable").replaceAll("_", " ")}</b></div>
+      <div><small>Evidence support</small><b>{assessment.sample_support_label || "Not available"}</b></div>
+      <div><small>Samples assessed</small><b>{assessment.sample_count ?? 0}</b></div>
+    </div>
+    {assessment.raw_model_score != null && <div className="uncertainty-score-line">
+      <span>Raw model score</span><b>{Number(assessment.raw_model_score).toFixed(3)} / 1.000</b>
+      <small>This is an uncalibrated model output, not a confidence percentage.</small>
+    </div>}
+    {reasons.length > 0 && <div className="uncertainty-reasons"><b>Why this uncertainty level was assigned</b>
+      {reasons.map((reason, index) => <p key={index}><span>•</span>{reason}</p>)}
+    </div>}
+    {assessment.interpretation && <p className="uncertainty-explanation">{assessment.interpretation}</p>}
+    <div className="uncertainty-calibration"><span>CALIBRATION STATUS</span><b>Not calibrated</b><small>Held-out dataset calibration has not been performed for this model.</small></div>
+  </section>;
+}
+
 function ModelAssessment({ asset }) {
   const model = asset.model_assessment || {};
   const video = asset.video_analysis || {};
@@ -429,6 +457,7 @@ function ModelAssessment({ asset }) {
       <small>{model.voice_synthesis_review.note}</small>
       <small>{model.voice_synthesis_review.model || model.model_name} · {model.voice_synthesis_review.windows_assessed || 0} speech window(s) assessed · median fake-direction score {scorePercent(model.voice_synthesis_review.median_fake_model_score)}</small>
     </div>}
+    <UncertaintyAssessment assessment={asset.uncertainty_assessment || details.uncertainty_assessment || model.uncertainty_assessment} />
     {details.scores && <div className="score-list">
       {Object.entries(details.scores).filter(([key, value]) => typeof value === "number" && (key.includes("fake") || key.includes("real") || key.includes("ai_generated")))
         .map(([key, value]) => <ScoreBar key={key} label={key} value={value} />)}

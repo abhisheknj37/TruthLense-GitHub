@@ -28,6 +28,7 @@ from app.services.activity import (
     save_ocr_correction,
 )
 from app.services.correlation import correlate_modalities, correlate_text_evidence
+from app.services.uncertainty_assessment import build_uncertainty_assessment
 from app.services.integrity import compare_sha256
 from app.services.media import MediaError, inspect_media
 from app.services.provenance import inspect_provenance
@@ -199,6 +200,9 @@ async def analyze_case(
                     severity="warning",
                 ))
 
+            uncertainty_assessment = build_uncertainty_assessment(
+                result["media_type"], model_assessment, video_analysis
+            )
             assets.append(AssetResult(
                 asset_id=str(uuid4()),
                 filename=filename,
@@ -215,6 +219,7 @@ async def analyze_case(
                 forensic_parameters=result.get("forensic_parameters", {}),
                 provenance=provenance,
                 text_extraction=text_extraction,
+                uncertainty_assessment=uncertainty_assessment,
             ))
         except MediaError as exc:
             for retained in retained_paths.values():
