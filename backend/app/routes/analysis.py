@@ -251,7 +251,7 @@ async def analyze_case(
             "the supplied evidence remains inconclusive."
         )
 
-    combined_text = "\\n\\n".join([context_text, *extracted_text]).strip()
+    combined_text = "\n\n".join([context_text, *extracted_text]).strip()
     text_analysis = analyze_text_context(combined_text)
     if combined_text:
         text_analysis["claim_verification"] = await verify_claims(combined_text)
