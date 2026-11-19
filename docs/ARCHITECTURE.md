@@ -1,31 +1,50 @@
 # TruthLens architecture
 
-## Design principle
-TruthLens separates **technical observations**, **model predictions**, and **human conclusions**. The MVP currently implements technical media inspection only. The detector adapter explicitly reports `not_configured`; it does not generate real/fake labels.
+## Evidence-first design
+TruthLens separates technical observations, model outputs and human conclusions. Each uploaded object receives a SHA-256 digest. The original file is never modified; an ephemeral working copy is used for processing and removed afterwards.
 
-## Request flow
-1. React sends one or more media files to `POST /api/analyze`.
-2. FastAPI validates count, extension and byte size.
-3. Each upload is written to a temporary file and removed after inspection.
-4. The media inspector extracts image metadata, samples video frames, or reads supported audio signal statistics.
-5. A detector adapter is called. Until a validated model is registered, it returns `not_configured`.
-6. The API creates a case report with limitations and human-review requirements.
-7. React displays observations and clearly labels the result inconclusive.
+## Modality pipelines
 
-## Media support in the starter
-- Image: JPEG, PNG, WEBP, BMP, TIFF.
-- Video: MP4, MOV, AVI, MKV, WEBM (decoder support depends on the local OpenCV/FFmpeg build).
-- Audio: WAV, FLAC, OGG (supported by the installed libsndfile build).
+### Image
+- Face locations are proposed by OpenCV Haar Cascade.
+- Up to three largest face crops are passed to \`sakshamkr1/deitfake-v2\` (Apache-2.0 model card).
+- The implementation reads the checkpoint's \`id2label\` mapping instead of assuming the class order.
+- Output contains per-face real/fake softmax scores, a median summary, a heuristic inconclusive band and an optional transformer patch-attribution overlay.
 
-## Adding real models
-Implement a modality-specific adapter behind `app/detectors/base.py`. Each adapter should return:
-- model identifier and exact version;
-- model-card and license reference;
-- prediction output and raw scores;
-- preprocessing details;
-- known limitations and supported media domain.
+**Scope:** the checkpoint is described as a face-cropped real/fake image classifier trained from OpenForensics-derived data. It is a research/educational model, not a validated forensic service. Images with no detected face remain inconclusive.
 
-Do not merge model scores into one probability unless calibration and fusion have been evaluated on a representative held-out dataset. Keep per-modality results separate and use a distinct `inconclusive` outcome.
+### Video
+- OpenCV reads the container metadata.
+- At most eight evenly spaced frames are sampled.
+- Each frame is passed through the same face-crop image detector.
+- The report stores frame index, timestamp, per-frame result and a median score over face-bearing frames.
 
-## Production hardening
-For a public deployment, move media decoding into isolated worker processes/containers with CPU, memory and time limits; use private object storage, retention policies, authentication, rate limiting, malware scanning, and audit logs. The local hackathon MVP is not a hardened public upload service.
+**Scope:** this is sampled frame classification, not temporal deepfake detection. It does not establish lip-sync, continuity or clip authenticity.
+
+### Audio
+- Audio is resampled to 16 kHz mono and analyzed in up to five 8-second windows.
+- \`Hemgg/Deepfake-audio-detection\` is loaded with Transformers (Apache-2.0 model card).
+- Class indices are resolved from the model config labels (\`AIVoice\` and \`HumanVoice\`), not guessed.
+- Per-window scores and median audio score are returned.
+
+**Scope:** the model card describes a multi-ethnic English audio dataset and a self-reported evaluation score, while also noting that more data are needed. This is a narrow research signal, not general voice-clone verification. It may fail on languages, codecs, generators or recording conditions outside its training data.
+
+## Uncertainty and decision bands
+The 0.35 / 0.65 cutoffs are configurable heuristic score bands. They are not calibrated confidence thresholds. The UI labels outputs as model signals and displays an inconclusive band between thresholds. Do not describe these softmax values as probability that the media is fake.
+
+## Grad-CAM-style patch attribution
+For the DeiT image model, the last transformer encoder block is hooked. The gradient of the fake-class logit with respect to patch tokens produces a patch-importance overlay. This visualization identifies image regions that influenced this model's output; it is not a manipulation mask and does not explain causality.
+
+## Cross-modal comparison
+Cross-modal comparison runs only after the user explicitly marks separate audio and video uploads as belonging to the same recording. It compares the audio-window signal with the video face-frame signal and reports agreement, disagreement or inconclusive status. It does not calculate a fused authenticity probability and does not independently verify synchronization or provenance.
+
+## Run-time behavior
+Models are loaded lazily on first use and cached in process memory. The first call may take time and download model weights from Hugging Face. CPU inference is supported but may be slow; CUDA is used when available.
+
+## API
+- \`GET /health\`
+- \`GET /api/capabilities\`
+- \`POST /api/analyze\` multipart fields: \`files\` (one or more), \`context_text\` (optional), \`pair_media\` (optional boolean).
+
+## Public deployment hardening
+The local hackathon MVP needs isolated media workers, process-level CPU/memory/time limits, stronger content validation, authentication, rate limiting, private storage and deletion policies before public exposure. Do not allow uploaded media to execute.
