@@ -13,6 +13,7 @@ from PIL import Image, ExifTags, UnidentifiedImageError
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 AUDIO_EXTS = {".wav", ".flac", ".ogg"}
+DOCUMENT_EXTS = {".txt", ".md", ".csv", ".pdf", ".docx"}
 
 
 class MediaError(ValueError):
@@ -27,6 +28,8 @@ def media_type_for(path: Path) -> str:
         return "video"
     if ext in AUDIO_EXTS:
         return "audio"
+    if ext in DOCUMENT_EXTS:
+        return "document"
     raise MediaError(f"Unsupported file extension: {ext or 'unknown'}")
 
 
@@ -206,8 +209,13 @@ def inspect_media(path: Path) -> dict[str, Any]:
     elif media_type == "video":
         metadata, observations, samples = inspect_video(path)
         forensic_parameters = {}
-    else:
+    elif media_type == "audio":
         metadata, observations = inspect_audio(path)
+        samples = []
+        forensic_parameters = {}
+    else:
+        metadata = {"format": path.suffix.lower().lstrip("."), "document_type": path.suffix.lower()}
+        observations = [{"code": "DOCUMENT_STRUCTURE_ACCEPTED", "title": "Document evidence accepted", "detail": "The document will be parsed for reviewable text. Extracted text is not independently verified.", "category": "document", "severity": "info"}]
         samples = []
         forensic_parameters = {}
     return {
