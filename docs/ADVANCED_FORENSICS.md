@@ -51,7 +51,7 @@ python evaluate_scores.py labelled_scores.csv --threshold 0.65 --output evaluati
 python evaluate_calibration.py labelled_scores.csv --output calibration-results.json
 ```
 
-The score evaluator reports metrics for the supplied labels and threshold. The calibration utility fits an isotonic mapping on the first 70% and evaluates on the remaining 30%. Shuffle and split by independent source/video/person before using it; a random row split can leak near-duplicate material. These utilities do not automatically alter or calibrate the deployed model outputs. No benchmark dataset or calibration results are bundled.
+The score evaluator reports metrics for the supplied labels and threshold. The calibration utility aggregates to one median score per source group, rejects groups with conflicting labels, performs a source-disjoint fit/held-out split and evaluates an unapproved candidate mapping. Shuffle and split by independent source/video/person before using it; a random row split can leak near-duplicate material. These utilities do not automatically alter or calibrate the deployed model outputs. No benchmark dataset or calibration results are bundled.
 
 ## Optional dependencies
 
@@ -177,3 +177,7 @@ Temporal adapter contract is intentionally strict: it accepts exactly one scalar
 
 
 OpenAlex claim research requests the available abstract inverted index and reconstructs a bounded abstract excerpt where the record provides one. When local NLI is enabled, each extracted claim is compared bidirectionally with available candidate abstracts. The report displays source title, year, venue, DOI/link, excerpt and NLI candidate relationship. OpenAlex relevance and NLI labels are not fact verification; inspect the original paper and passage before drawing conclusions.
+
+
+## Source-level performance and calibration
+Use `evaluate_scores.py --group-column video_id` to report row-level and source-level performance. Source-level mode takes one median score per source, so repeated frames/windows do not inflate the effective test count. The calibration candidate utility applies the same source-group aggregation, needs at least 60 independent source groups, reports dataset SHA-256 and held-out group metrics, and never creates a deployment-approved artifact automatically.

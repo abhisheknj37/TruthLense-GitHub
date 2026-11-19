@@ -11,9 +11,9 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 - **Dashboard:** workspace overview, saved-case metrics, recent investigations and the four-stage review workflow.
 - **New investigation:** live camera photo capture, camera video recording, microphone audio recording, drag-and-drop evidence intake, image thumbnails, video previews, audio playback cards, per-file validation, removal and total upload-size summary.
 - **Analysis pipeline:** media inspection, modality analysis, evidence correlation, then human review and reporting. Browser upload progress is shown; the API does not currently stream model-stage progress.
-- **Reports:** image face regions and optional Grad-CAM-style patch attribution, descriptive image-quality parameters, temporal video review cues, optional face-consistency and lip-sync integrations, optional OCR/transcription, provenance status, text triage, metadata, SHA-256 fingerprints and a local hash-linked evidence event history.
+- **Reports:** image face regions and optional Grad-CAM-style patch attribution, timestamped video-frame scores and temporal review cues, speech-window scores and synthetic/spoof indicators, source-labelled OCR/transcript/TXT/MD evidence, optional semantic NLI and scholarly candidates, evidence-aware uncertainty, provenance status, SHA-256 fingerprints and hash-linked custody events.
 - **Case history:** reopen server-persisted investigations, search saved cases, and delete reports and their attribution artifacts for the signed-in account.
-- **Exports:** JSON download and print-friendly report that can be saved as PDF from the browser print dialog.
+- **Human review & exports:** per-finding analyst decisions and rationale, persisted review history, PDF/JSON reports and a chain-of-custody JSON manifest.
 - **Settings:** local workspace label and API health check.
 
 Completed reports, activity events, evidence metadata, SHA-256 verification results and generated model-attribution PNGs are persisted by the backend, scoped to the verified Firebase UID. The dashboard polls the authenticated activity feed every 8 seconds; case history and reports are loaded from the API and can be accessed across browsers/devices that sign in to the same account. Original uploaded media is processed from temporary working copies by default and removed after analysis. Investigators may explicitly opt in to private original retention per case; retained files have a configurable expiry and authenticated download. By default, the SQLite database and heatmap artifacts are stored under `backend/data/`. Back up and protect this directory in deployment.
@@ -25,14 +25,14 @@ Completed reports, activity events, evidence metadata, SHA-256 verification resu
 - Follow [docs/FIREBASE_AUTH_SETUP.md](docs/FIREBASE_AUTH_SETUP.md) to configure your Firebase project and local secrets.
 - Copy `frontend/.env.example` to `frontend/.env.local`; copy `backend/.env.example` to `backend/.env`. Keep the Firebase Admin service-account JSON private and outside Git.
 - The analysis, activity, report retrieval, heatmap retrieval and report deletion APIs require a valid Firebase ID token. Public health and model-capability checks remain unauthenticated.
-- Report records and heatmap artifacts are scoped by Firebase UID in the backend database. Original uploaded media is not stored after processing.
+- Report records, review records and heatmap artifacts are scoped by Firebase UID. Original media is not retained by default; retention requires an explicit per-case opt-in, is owner-scoped, digest-checked on download and expires after the configured period.
 
 ## Current model-backed pipelines
 
 - **Image:** face crops → DeiTFake ViT image classifier → per-face score, heuristic uncertainty band and Grad-CAM-style patch attribution.
-- **Video:** up to eight evenly spaced frames → same face-image classifier → timestamped frame results and clip-level median over face-bearing frames.
+- **Video:** up to sixteen deterministic evenly spaced frames selected by a two-pass sequential decode → same face-image classifier → timestamped frame results, per-frame score dispersion and clip-level median over face-bearing frames.
 - **Audio:** 16 kHz mono speech windows → Wav2Vec2 classifier → segment scores and median summary.
-- **Cross-modal:** compare independent audio/video model signals only when the user confirms they belong to the same recording; optional activity-envelope alignment and SyncNet are separate synchronization review signals, not authenticity probabilities.
+- **Cross-modal:** compare independent audio/video model signals and relative-time score profiles only when the user confirms they belong to the same recording; optional activity-envelope alignment and SyncNet are separate synchronization review signals, not authenticity probabilities. OCR, captions, transcripts, plain-text sources and investigator claims receive pairwise lexical review; optional local NLI adds candidate sentence relationships without issuing truth verdicts.
 - **Evidence:** server-computed SHA-256 fingerprint compared with a browser pre-upload digest, media metadata and structured JSON report. A matching digest verifies transfer integrity only.
 
 ## Selected pretrained models
@@ -81,8 +81,7 @@ Open the frontend at http://localhost:5173 and API docs at http://127.0.0.1:8000
 - Images: JPG, JPEG, PNG, WEBP, BMP, TIF, TIFF
 - Video: MP4, MOV, AVI, MKV, WEBM
 - Audio: WAV, FLAC, OGG
-- Text: UTF-8 TXT and MD (maximum 1 MB per text file; imported as source evidence)
-- Plain text: UTF-8 TXT and MD (maximum 1 MB per file; imported as source evidence, not executed)
+- Text: UTF-8 TXT and MD (maximum 1 MB per file; imported as source evidence, not executed)
 - Up to 8 files per case; maximum 40 MB per file
 
 Document uploads such as PDF, DOCX and XLSX are not supported by the current analysis API and are therefore not offered as evidence types in this version.
@@ -90,9 +89,9 @@ Document uploads such as PDF, DOCX and XLSX are not supported by the current ana
 ## Safety and limitations
 
 - Image model is face-crop focused; a no-face image returns inconclusive.
-- Video frame classification is sampled. Temporal optical-flow/scene-change indicators are heuristic review cues, not a trained temporal classifier. Actual lip-sync inference requires optional configured SyncNet weights.
+- Video frame classification is sampled (up to 16 frames). Temporal optical-flow/scene-change indicators are heuristic review cues, not a trained temporal classifier. A custom temporal adapter remains disabled unless a compatible, separately validated checkpoint is supplied. Actual SyncNet inference requires optional configured weights/package/FFmpeg.
 - Audio results may not generalize beyond the model's limited training scope.
-- Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities.
+- Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities. Evidence-aware uncertainty labels are heuristic. Approved calibrated estimates appear only if a model/pipeline-specific, source-group validated artifact has been reviewed and enabled; no validation dataset or approved artifact is bundled.
 - Cross-modal agreement is not proof of authenticity. Coarse activity alignment is not phoneme-to-viseme verification; SyncNet requires optional model weights and careful review.
 - The backend database and heatmap directory are persistent local server storage; production deployments should use backed-up durable storage and strict filesystem permissions.
 - Uploaded files are never executed. Public deployment requires isolated processing, authentication, rate limits and stronger security controls.
@@ -111,7 +110,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pip install -r requirements-forensics.txt
 ```
 
-Tesseract OCR and FFmpeg also require system executables. Optional configuration includes `TRUTHLENS_TEMPORAL_MODEL`, `TRUTHLENS_FACE_MODEL`, `TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD`, `TRUTHLENS_SYNCNET_WEIGHTS`, `TRUTHLENS_ASR_MODEL`, `TRUTHLENS_TESSERACT_CMD`, `TRUTHLENS_LEDGER_DB` and `HF_HOME`. The Settings page now displays backend-detected integration readiness and missing prerequisites from `/api/capabilities`; configure `backend/.env`, restart FastAPI and refresh the panel. See [docs/ADVANCED_FORENSICS.md](docs/ADVANCED_FORENSICS.md) for Windows setup, system executables, API routes, evaluation utilities and limitations.
+Tesseract OCR and FFmpeg also require system executables. RapidOCR is a fallback when Tesseract is missing; it does not provide the same word-confidence estimate. Optional configuration includes `TRUTHLENS_TEMPORAL_MODEL`, `TRUTHLENS_FACE_MODEL`, `TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD`, `TRUTHLENS_SYNCNET_WEIGHTS`, `TRUTHLENS_ASR_MODEL`, `TRUTHLENS_TESSERACT_CMD`, `TRUTHLENS_LEDGER_DB` and `HF_HOME`. The Settings page now displays backend-detected integration readiness and missing prerequisites from `/api/capabilities`; configure `backend/.env`, restart FastAPI and refresh the panel. See [docs/ADVANCED_FORENSICS.md](docs/ADVANCED_FORENSICS.md) for Windows setup, system executables, API routes, evaluation utilities and limitations.
 
 The new evidence-ledger API endpoints are authenticated and user-scoped:
 - `GET /api/cases/{report_id}/chain-of-custody`
@@ -119,3 +118,6 @@ The new evidence-ledger API endpoints are authenticated and user-scoped:
 - `POST /api/claims/verify` with `{"text":"..." }`
 
 The local hash chain detects changes within the stored event sequence but is not independently timestamped or externally anchored. Claim research returns related scholarly candidates for human review and does not issue true/false verdicts.
+
+
+Additional hardening implemented on the feature branch: opt-in original-evidence retention with expiry and authenticated digest-checked retrieval; optional server-secret HMAC signatures on the local custody chain; source-level evaluation and group-safe calibration candidates; optional bidirectional NLI against extracted evidence and available scholarly abstracts. These features remain limited by their configuration, validation data and external dependencies.

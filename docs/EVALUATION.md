@@ -14,7 +14,7 @@ The selected Wav2Vec2 model card describes a multi-ethnic English dataset sample
 Record EER, ROC-AUC, precision, recall, false-positive rate, calibration and real-time factor. Preserve the per-window scores in the report.
 
 ## Video evaluation
-The current pipeline samples at most eight evenly spaced frames and runs the image face detector on each. Evaluate clip-level results and per-frame results separately. This is not a temporal detector. Do not claim lip-sync detection or temporal consistency analysis until a corresponding model and dataset are implemented.
+The current pipeline deterministically samples up to sixteen evenly spaced frames using a two-pass sequential decoder and runs the image face detector on each. Evaluate clip-level results and per-frame results separately. This is not a temporal detector. Do not claim lip-sync detection or temporal consistency analysis until a corresponding model and dataset are implemented.
 
 ## Cross-modal evaluation
 Only compare audio/video assets when the uploader confirms they belong to the same recording. Current cross-modal logic compares independent modality scores and reports agreement/disagreement/inconclusive; it does not establish sync, identity or authenticity. Evaluate paired, timestamp-aligned samples before adding actual sync claims.
