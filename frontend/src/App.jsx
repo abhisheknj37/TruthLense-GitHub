@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import {
   Activity, AlertTriangle, ArrowRight, AudioLines, Bell, CalendarDays,
@@ -300,10 +300,10 @@ function CaseRow({ report, onOpen }) {
   </button>;
 }
 
-function IntegrityPanel({ reports }) {
+function IntegrityPanel({ events, loading, error }) {
   const [copiedId, setCopiedId] = useState("");
-  const assets = reports.flatMap((report) => report.assets.map((asset) => ({
-    ...asset, caseTitle: report.case_title || "Forensic investigation"
+  const assets = events.flatMap((event) => (event.evidence || []).map((asset) => ({
+    ...asset, caseTitle: event.case_title
   }))).slice(0, 6);
   async function copyHash(asset) {
     try {
@@ -314,50 +314,92 @@ function IntegrityPanel({ reports }) {
   }
   const matched = assets.filter((asset) => asset.integrity_verification?.status === "match").length;
   return <section className="content-panel integrity-panel">
-    <div className="insight-panel-title"><div><span className="section-kicker">EVIDENCE INTEGRITY</span><h2>SHA-256 fingerprints</h2></div><span className="insight-icon"><Fingerprint size={19} /></span></div>
-    <div className="integrity-summary"><b>{matched} / {assets.length}</b><span>browser-to-server hash matches in recent evidence</span></div>
+    <div className="insight-panel-title"><div><span className="section-kicker">SERVER-RECORDED INTEGRITY</span><h2>SHA-256 fingerprints</h2></div><span className="insight-icon"><Fingerprint size={19} /></span></div>
+    <div className="integrity-summary"><b>{matched} / {assets.length}</b><span>received files independently matched against the pre-upload browser digest</span></div>
     {assets.length ? <div className="integrity-list">{assets.map((asset) => {
-      const state = asset.integrity_verification?.status;
-      const label = state === "match" ? "Verified match" : state === "mismatch" ? "Mismatch" : state === "unavailable" ? "Not rechecked" : "Fingerprint recorded";
+      const state = asset.integrity_verification?.status || "not_compared";
+      const label = state === "match" ? "Verified match" : state === "mismatch" ? "Mismatch" : state === "invalid_client_digest" ? "Invalid digest" : "Not compared";
       return <div className="integrity-item" key={asset.asset_id}>
-        <div className="integrity-item-top"><span>{typeIcon(asset.media_type, 14)}<b title={asset.filename}>{asset.filename}</b></span><span className={"integrity-status " + (state || "recorded")}>{label}</span></div>
-        <div className="integrity-digest"><code title={asset.sha256}>{asset.sha256 || "SHA-256 unavailable"}</code><button onClick={() => copyHash(asset)} disabled={!asset.sha256} title="Copy SHA-256 digest"><Copy size={13} />{copiedId === asset.asset_id ? "Copied" : copiedId === "unavailable" ? "Blocked" : "Copy"}</button></div>
-        <small className="integrity-case">{asset.caseTitle} · {asset.integrity_verification?.checked_at ? "Checked " + formatDate(asset.integrity_verification.checked_at) : "Server fingerprint saved"}</small>
+        <div className="integrity-item-top"><span>{typeIcon(asset.media_type, 14)}<b title={asset.filename}>{asset.filename}</b></span><span className={"integrity-status " + state}>{label}</span></div>
+        <div className="integrity-digest"><code title={asset.sha256}>{asset.sha256 || "SHA-256 unavailable"}</code><button onClick={() => copyHash(asset)} disabled={!asset.sha256} title="Copy server SHA-256"><Copy size={13} />{copiedId === asset.asset_id ? "Copied" : copiedId === "unavailable" ? "Blocked" : "Copy"}</button></div>
+        <small className="integrity-case">{asset.caseTitle} · {asset.integrity_verification?.checked_at ? "Checked " + formatDate(asset.integrity_verification.checked_at) : "Server digest recorded"}</small>
       </div>;
-    })}</div> : <div className="insight-empty"><Fingerprint size={24} /><b>No evidence fingerprints yet</b><span>Run an investigation to create SHA-256 evidence fingerprints.</span></div>}
-    <p className="insight-footnote">A match confirms that the uploaded bytes produced the same digest in the browser and API. It does not prove who created the file or that its contents are authentic.</p>
+    })}</div> : <div className="insight-empty"><Fingerprint size={24} /><b>{loading ? "Loading server evidence…" : error ? "Integrity service unavailable" : "No evidence fingerprints yet"}</b><span>{error || "Run a real investigation to create server-verified SHA-256 fingerprints."}</span></div>}
+    <p className="insight-footnote">The API computes each digest from the received file and compares it with the browser's pre-upload digest. A match verifies transfer integrity, not who created the file or whether its contents are authentic.</p>
   </section>;
 }
 
-function ActivityTimeline({ reports, onOpen }) {
+function ActivityTimeline({ events, onOpen, loading, error }) {
   return <section className="content-panel activity-panel">
-    <div className="insight-panel-title"><div><span className="section-kicker">WORKSPACE LOG</span><h2>Recent activity</h2></div><span className="insight-icon"><Clock3 size={18} /></span></div>
-    {reports.length ? <div className="activity-timeline">{reports.slice(0, 5).map((report) =>
-      <button className="activity-event" key={report.report_id} onClick={() => onOpen(report)}>
-        <span className="activity-dot"><CheckCircle2 size={13} /></span><span className="activity-event-copy"><b>Investigation saved</b>
-          <small>{report.case_title || "Forensic investigation"}</small>
-          <small>{report.assets.length} evidence item{report.assets.length === 1 ? "" : "s"} · {report.assets.filter((asset) => asset.sha256).length} fingerprints recorded</small></span>
-        <time>{formatDate(report.created_at)}</time>
+    <div className="insight-panel-title"><div><span className="section-kicker">LIVE SERVER ACTIVITY</span><h2>Recent activity</h2></div><span className="insight-icon"><Clock3 size={18} /></span></div>
+    {events.length ? <div className="activity-timeline">{events.slice(0, 5).map((event) =>
+      <button className="activity-event" key={event.event_id} onClick={() => onOpen(event.report_id)}>
+        <span className="activity-dot"><CheckCircle2 size={13} /></span><span className="activity-event-copy"><b>Investigation completed</b>
+          <small>{event.case_title}</small>
+          <small>{event.evidence_count} evidence item{event.evidence_count === 1 ? "" : "s"} · {event.verified_count} hash match{event.verified_count === 1 ? "" : "es"}</small></span>
+        <time>{formatDate(event.created_at)}</time>
       </button>
-    )}</div> : <div className="insight-empty"><Clock3 size={24} /><b>No recent activity</b><span>Completed investigations will appear here.</span></div>}
-    <p className="insight-footnote">Events are based on saved investigation reports in this browser. This is not a server-side audit log.</p>
+    )}</div> : <div className="insight-empty"><Clock3 size={24} /><b>{loading ? "Connecting to activity service…" : error ? "Activity service unavailable" : "No investigations recorded"}</b><span>{error || "Completed investigations recorded by the backend will appear here."}</span></div>}
+    <p className="insight-footnote">Authenticated server activity for the current Firebase account. Automatically refreshed every 8 seconds.</p>
   </section>;
 }
 
-function HeatmapPreview({ reports, onOpen }) {
-  const entry = reports.flatMap((report) => report.assets.map((asset) => ({ report, asset })))
-    .find(({ asset }) => asset.media_type === "image" && asset.model_assessment?.faces?.some((face) => face.gradcam_overlay_base64));
-  const face = entry?.asset.model_assessment.faces.find((item) => item.gradcam_overlay_base64);
+function HeatmapPreview({ events, user, onOpen }) {
+  const entry = events.flatMap((event) => (event.evidence || []).map((asset) => ({ event, asset })))
+    .find(({ asset }) => (asset.heatmap_faces || []).some((face) => face.heatmap_available));
+  const face = entry?.asset.heatmap_faces.find((item) => item.heatmap_available);
+  const [imageUrl, setImageUrl] = useState("");
+  const [heatmapStatus, setHeatmapStatus] = useState("idle");
+  const reportId = entry?.event.report_id;
+  const assetId = entry?.asset.asset_id;
+  const faceIndex = face?.face_index ?? 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+    setImageUrl("");
+    if (!reportId || !assetId || !user) {
+      setHeatmapStatus("idle");
+      return () => {};
+    }
+    setHeatmapStatus("loading");
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await axios.get(
+          API + "/api/reports/" + encodeURIComponent(reportId) + "/heatmap",
+          { params: { asset_id: assetId, face_index: faceIndex }, responseType: "blob", headers: { Authorization: "Bearer " + token }, timeout: 20000 }
+        );
+        objectUrl = URL.createObjectURL(response.data);
+        if (!cancelled) {
+          setImageUrl(objectUrl);
+          setHeatmapStatus("ready");
+        }
+      } catch {
+        if (!cancelled) setHeatmapStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [reportId, assetId, faceIndex, user]);
+
   return <section className="content-panel heatmap-panel">
-    <div className="insight-panel-title"><div><span className="section-kicker">MODEL EXPLAINABILITY</span><h2>Heatmap preview</h2></div><span className="insight-icon"><Activity size={18} /></span></div>
-    {entry && face ? <button className="heatmap-preview-button" onClick={() => onOpen(entry.report)} title="Open the full case report">
-      <div className="heatmap-image-wrap"><img src={"data:image/png;base64," + face.gradcam_overlay_base64} alt="Grad-CAM-style transformer patch attribution overlay for analyzed image evidence" /></div>
-      <div className="heatmap-caption"><span><b>{entry.asset.filename}</b><small>{entry.report.case_title || "Forensic investigation"}</small></span><span className="heatmap-open">Open report <ArrowRight size={13} /></span></div>
-      <span className="heatmap-model-note">Patch attribution · Face crop model</span>
-    </button> : <div className="heatmap-empty"><div className="heatmap-placeholder"><Fingerprint size={39} /><span>ATTRIBUTION PREVIEW</span></div>
-      <b>No heatmap available yet</b><p>Upload an image with a detectable face. The preview appears when the image model successfully produces patch attribution.</p>
-      <span className="heatmap-limit">Not every image returns a heatmap. Video frame heatmaps are not currently generated.</span></div>}
-    <p className="insight-footnote">The overlay highlights image patches that influenced the model output. It is not a manipulation mask or proof of tampering.</p>
+    <div className="insight-panel-title"><div><span className="section-kicker">PERSISTED MODEL ATTRIBUTION</span><h2>Heatmap preview</h2></div><span className="insight-icon"><Activity size={18} /></span></div>
+    {entry ? <div>
+      <button className="heatmap-preview-button" onClick={() => onOpen(reportId)} title="Open the saved analysis report">
+        <div className="heatmap-image-wrap">
+          {imageUrl ? <img src={imageUrl} alt="Persisted Grad-CAM-style model attribution overlay" />
+            : <div className="heatmap-loading">{heatmapStatus === "loading" ? <LoaderCircle className="spin" size={23} /> : <AlertTriangle size={23} />}<span>{heatmapStatus === "loading" ? "Loading saved model heatmap…" : "Could not load saved heatmap"}</span></div>}
+        </div>
+        <div className="heatmap-caption"><span><b>{entry.asset.filename}</b><small>{entry.event.case_title}</small></span><span className="heatmap-open">Open report <ArrowRight size={13} /></span></div>
+        <span className="heatmap-model-note">Actual stored model output · Face crop attribution</span>
+      </button>
+    </div> : <div className="heatmap-empty"><div className="heatmap-placeholder"><Fingerprint size={39} /><span>MODEL ATTRIBUTION</span></div>
+      <b>No heatmap artifact returned</b><p>Heatmaps appear only when the image model detects a face and successfully generates a patch-attribution overlay.</p>
+      <span className="heatmap-limit">No synthetic or placeholder heatmaps are displayed. Video attribution is not generated by the current pipeline.</span></div>}
+    <p className="insight-footnote">The overlay is stored with the case on the backend and fetched using your signed-in identity. It shows model-influential patches, not proof of manipulation.</p>
   </section>;
 }
 
@@ -432,6 +474,9 @@ export default function App() {
   const [apiMessage, setApiMessage] = useState("");
   const [workspaceName, setWorkspaceName] = useState(() => localStorage.getItem("truthlens.workspace-name") || "Forensic workspace");
   const [savedReports, setSavedReports] = useState([]);
+  const [activityEvents, setActivityEvents] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState("");
 
   useEffect(() => observeAuth((nextUser) => {
     setUser(nextUser);
@@ -478,14 +523,56 @@ export default function App() {
     localStorage.setItem("truthlens.workspace-name", workspaceName);
   }, [workspaceName]);
 
+  const refreshActivity = useCallback(async () => {
+    if (!user) {
+      setActivityEvents([]);
+      setActivityLoading(false);
+      return;
+    }
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get(API + "/api/activity", {
+        params: { limit: 50 },
+        timeout: 12000,
+        headers: { Authorization: "Bearer " + token }
+      });
+      setActivityEvents(response.data.events || []);
+      setActivityError("");
+      setApiStatus("online");
+    } catch (err) {
+      setActivityError(err.response?.data?.detail || err.message || "Could not load server activity.");
+      setApiStatus("offline");
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    setActivityLoading(true);
+    refreshActivity();
+    const refreshTimer = window.setInterval(refreshActivity, 8000);
+    return () => window.clearInterval(refreshTimer);
+  }, [user, refreshActivity]);
+
   const totalSize = useMemo(() => files.reduce((sum, item) => sum + item.file.size, 0), [files]);
-  const latestReports = useMemo(() => [...savedReports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)), [savedReports]);
+  const latestReports = useMemo(() => activityEvents.map((event) => ({
+    report_id: event.report_id,
+    case_title: event.case_title,
+    created_at: event.created_at,
+    overall_status: event.overall_status,
+    assets: (event.evidence || []).map((asset) => ({
+      ...asset,
+      model_assessment: { status: asset.analysis_status, prediction: asset.prediction },
+      video_analysis: { prediction: asset.prediction }
+    }))
+  })), [activityEvents]);
   const filteredReports = latestReports.filter((item) =>
     (item.case_title || "").toLowerCase().includes(search.toLowerCase()) ||
     item.report_id.toLowerCase().includes(search.toLowerCase()) ||
     item.assets.some((asset) => asset.filename.toLowerCase().includes(search.toLowerCase()))
   );
-  const reviewedAssets = savedReports.reduce((sum, item) => sum + item.assets.length, 0);
+  const reviewedAssets = activityEvents.reduce((sum, item) => sum + item.evidence_count, 0);
 
   function addFiles(selected) {
     const next = [...files];
@@ -527,7 +614,10 @@ export default function App() {
     files.forEach((item) => data.append("files", item.file));
     data.append("context_text", context);
     data.append("pair_media", pairMedia ? "true" : "false");
+    data.append("case_title", caseTitle.trim());
     try {
+      const preUploadDigests = await Promise.all(files.map((item) => sha256Hex(item.file)));
+      data.append("sha256_digests", JSON.stringify(preUploadDigests));
       const token = await user.getIdToken();
       const response = await axios.post(API + "/api/analyze", data, {
         headers: { Authorization: "Bearer " + token },
@@ -536,50 +626,51 @@ export default function App() {
           if (event.total) setUploadProgress(Math.round((event.loaded / event.total) * 100));
         }
       });
-      const verifiedAssets = [];
-      for (const asset of response.data.assets || []) {
-        const selected = files.find((item) => item.file.name === asset.filename && item.file.size === asset.size_bytes);
-        if (!selected || !asset.sha256) {
-          verifiedAssets.push({ ...asset, integrity_verification: { status: "unavailable" } });
-          continue;
-        }
-        try {
-          const browserDigest = await sha256Hex(selected.file);
-          verifiedAssets.push({
-            ...asset,
-            integrity_verification: {
-              status: browserDigest.toLowerCase() === asset.sha256.toLowerCase() ? "match" : "mismatch",
-              browser_sha256: browserDigest,
-              checked_at: new Date().toISOString()
-            }
-          });
-        } catch {
-          verifiedAssets.push({ ...asset, integrity_verification: { status: "unavailable" } });
-        }
-      }
       const report = {
         ...response.data,
-        assets: verifiedAssets,
-        case_title: caseTitle.trim() || (files.length === 1 ? "Review · " + files[0].file.name : "Investigation · " + files.length + " evidence files"),
+        case_title: response.data.case_title || caseTitle.trim() || (files.length === 1 ? "Review · " + files[0].file.name : "Investigation · " + files.length + " evidence files"),
         case_context: context
       };
       setActiveReport(report);
       setSavedReports((current) => [report, ...current.filter((item) => item.report_id !== report.report_id)].slice(0, 50));
-      setNotice("Investigation completed and saved in this browser's case history.");
+      setNotice("Investigation and evidence integrity results saved to the TruthLens backend.");
+      await refreshActivity();
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Analysis failed.");
     } finally {
       setLoading(false);
     }
   }
-  function openReport(report) {
-    setActiveReport(report);
+  async function openReport(report) {
+    const reportId = typeof report === "string" ? report : report.report_id;
     setPage("reports");
     setNotice("");
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get(API + "/api/reports/" + encodeURIComponent(reportId), {
+        timeout: 30000,
+        headers: { Authorization: "Bearer " + token }
+      });
+      setActiveReport(response.data);
+      setError("");
+    } catch (err) {
+      const cached = savedReports.find((item) => item.report_id === reportId);
+      if (cached) setActiveReport(cached);
+      setError(err.response?.data?.detail || "Could not load the saved server report.");
+    }
   }
-  function removeSavedReport(id) {
-    setSavedReports((current) => current.filter((item) => item.report_id !== id));
-    if (activeReport?.report_id === id) setActiveReport(null);
+  async function removeSavedReport(id) {
+    try {
+      const token = await user.getIdToken();
+      await axios.delete(API + "/api/reports/" + encodeURIComponent(id), {
+        headers: { Authorization: "Bearer " + token }
+      });
+      setSavedReports((current) => current.filter((item) => item.report_id !== id));
+      if (activeReport?.report_id === id) setActiveReport(null);
+      await refreshActivity();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not delete the saved server report.");
+    }
   }
   async function checkApi() {
     setApiStatus("checking");
@@ -717,20 +808,20 @@ export default function App() {
         </label>
 
         <div className="stats-grid dashboard-stats">
-          <div className="stat-card"><span><FolderOpen size={17} /> TOTAL CASES</span><b>{savedReports.length}</b><small>Saved investigations</small></div>
-          <div className="stat-card"><span><ShieldAlert size={17} /> MANIPULATION SIGNALS</span><b>{savedReports.reduce((sum, item) => sum + item.assets.filter((asset) => (asset.video_analysis?.prediction || asset.model_assessment?.prediction) === "fake_signal").length, 0)}</b><small>Signals requiring analyst review</small></div>
-          <div className="stat-card"><span><FileBarChart2 size={17} /> REPORTS GENERATED</span><b>{savedReports.length}</b><small>Reports saved in this browser</small></div>
+          <div className="stat-card"><span><FolderOpen size={17} /> TOTAL CASES</span><b>{activityEvents.length}</b><small>Server records · live refresh</small></div>
+          <div className="stat-card"><span><ShieldAlert size={17} /> MANIPULATION SIGNALS</span><b>{activityEvents.reduce((sum, event) => sum + (event.evidence || []).filter((asset) => asset.prediction === "fake_signal").length, 0)}</b><small>Signals requiring analyst review</small></div>
+          <div className="stat-card"><span><FileBarChart2 size={17} /> REPORTS GENERATED</span><b>{activityEvents.length}</b><small>Reports persisted by backend</small></div>
           <div className="stat-card"><span><FileImage size={17} /> MEDIA ANALYZED</span><b>{reviewedAssets}</b><small>Evidence items across cases</small></div>
         </div>
 
         <div className="dashboard-insights-grid">
-          <IntegrityPanel reports={latestReports} />
-          <ActivityTimeline reports={latestReports} onOpen={openReport} />
-          <HeatmapPreview reports={latestReports} onOpen={openReport} />
+          <IntegrityPanel events={activityEvents} loading={activityLoading} error={activityError} />
+          <ActivityTimeline events={activityEvents} onOpen={openReport} loading={activityLoading} error={activityError} />
+          <HeatmapPreview events={activityEvents} user={user} onOpen={openReport} />
         </div>
         <div className="dashboard-lower">
           <div className="content-panel recent-panel">
-            <div className="panel-title"><div><span className="section-kicker">CASE REGISTER</span><h2>Recent investigations</h2></div>
+            <div className="panel-title"><div><span className="section-kicker">SERVER CASE REGISTER</span><h2>Recent investigations</h2></div>
               <button className="text-button" onClick={() => setPage("history")}>View all <ArrowRight size={14} /></button></div>
             {latestReports.length ? <div className="recent-case-table">
               <div className="recent-case-head"><span>Case ID / Title</span><span>Evidence</span><span>Updated</span><span>Status</span></div>
@@ -817,8 +908,8 @@ export default function App() {
             <div className="search-box"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search case, ID or filename…" /></div></div>
           {filteredReports.length ? filteredReports.map((report) => <div className="record-line" key={report.report_id}>
             <CaseRow report={report} onOpen={() => openReport(report)} />
-            <button className="delete-record" onClick={() => removeSavedReport(report.report_id)} title="Delete saved report"><Trash2 size={15} /></button>
-          </div>) : <div className="empty-state"><div className="empty-icon"><FileBarChart2 size={22} /></div><b>No saved reports found</b><p>Run an investigation to create a case record. Reports are stored locally in this browser.</p></div>}
+            <button className="delete-record" onClick={() => removeSavedReport(report.report_id)} title="Delete server report"><Trash2 size={15} /></button>
+          </div>) : <div className="empty-state"><div className="empty-icon"><FileBarChart2 size={22} /></div><b>{activityLoading ? "Loading server cases…" : activityError ? "Server case history unavailable" : "No saved reports found"}</b><p>{activityError || "Run an investigation to create a case record. Saved reports are stored by the TruthLens backend and synced to your account."}</p></div>}
         </div>
       </section>}
 
@@ -828,7 +919,7 @@ export default function App() {
         <div className="settings-grid">
           <div className="content-panel settings-card"><span className="section-kicker">01 / GETTING STARTED</span><h2>Upload your evidence</h2><p>Add supported image, video, or speech-audio files. You can attach up to eight files, with a 40 MB limit per file.</p></div>
           <div className="content-panel settings-card"><span className="section-kicker">02 / REVIEW FINDINGS</span><h2>Interpret model signals</h2><p>Review modality outputs, metadata, SHA-256 fingerprints and available attribution or sampled-frame details. A model score is not a calibrated probability.</p></div>
-          <div className="content-panel settings-card"><span className="section-kicker">03 / SAVE YOUR WORK</span><h2>Case history & reports</h2><p>Completed case reports are saved in this browser and can be reopened from Case History. Export a JSON or print-ready PDF copy.</p></div>
+          <div className="content-panel settings-card"><span className="section-kicker">03 / SAVE YOUR WORK</span><h2>Case history & reports</h2><p>Completed reports are stored by the backend under your Firebase account. Export a JSON or print-ready PDF copy.</p></div>
           <div className="content-panel settings-card"><span className="section-kicker">04 / CONNECTION</span><h2>Backend status</h2><p>Use the connection control in the top bar or Settings to test the TruthLens API. The FastAPI backend must be running for analysis requests.</p><button className="button button-quiet" onClick={checkApi}><Activity size={15} /> Test API connection</button></div>
         </div>
       </section>}
