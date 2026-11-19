@@ -97,59 +97,94 @@ def inspect_image(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return metadata, observations
 
 
-def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def sample_video_frames(path: Path, max_frames: int = 8) -> dict[str, Any]:
+    """Decode sequentially and retain a deterministic, evenly distributed sample.
+
+    Do not trust container-reported frame counts: malformed WebM metadata can
+    expose negative or implausible CAP_PROP_FRAME_COUNT values.
+    """
     capture = cv2.VideoCapture(str(path))
     if not capture.isOpened():
         raise MediaError("The uploaded video could not be decoded by OpenCV.")
 
-    try:
-        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
-        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-        duration = frame_count / fps if fps > 0 else None
-        samples: list[dict[str, Any]] = []
+    fps_value = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+    fps = fps_value if math.isfinite(fps_value) and 0 < fps_value < 1000 else None
+    width_value = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height_value = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    width = width_value if width_value > 0 else None
+    height = height_value if height_value > 0 else None
+    retained: list[tuple[int, np.ndarray]] = []
+    frame_count = 0
+    rng = np.random.default_rng(2026)
+    limit = max(1, int(max_frames))
 
-        if frame_count > 0:
-            indexes = np.linspace(
-                0, max(frame_count - 1, 0),
-                num=min(sample_limit, frame_count),
-                dtype=int,
-            )
-            for index in sorted(set(indexes.tolist())):
-                capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
-                ok, frame = capture.read()
-                if ok:
-                    samples.append({
-                        "frame_index": int(index),
-                        "timestamp_seconds": round(index / fps, 3) if fps > 0 else None,
-                        "width": int(frame.shape[1]),
-                        "height": int(frame.shape[0]),
-                    })
+    try:
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            index = frame_count
+            frame_count += 1
+            if len(retained) < limit:
+                retained.append((index, frame.copy()))
+            else:
+                slot = int(rng.integers(0, frame_count))
+                if slot < limit:
+                    retained[slot] = (index, frame.copy())
     finally:
         capture.release()
 
-    metadata = {
-        "container_extension": path.suffix.lower(),
-        "fps": round(fps, 3) if fps > 0 else None,
+    retained.sort(key=lambda item: item[0])
+    samples = [{
+        "frame_index": index,
+        "timestamp_seconds": round(index / fps, 3) if fps else None,
+        "width": int(frame.shape[1]),
+        "height": int(frame.shape[0]),
+        "frame": frame,
+    } for index, frame in retained]
+    return {
+        "fps": fps,
         "frame_count": frame_count,
-        "duration_seconds": round(duration, 3) if duration is not None else None,
+        "duration_seconds": round(frame_count / fps, 3) if fps and frame_count else None,
         "width": width,
         "height": height,
+        "sampled_frames": samples,
+    }
+
+
+def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    decoded = sample_video_frames(path, sample_limit)
+    samples = [
+        {key: value for key, value in item.items() if key != "frame"}
+        for item in decoded["sampled_frames"]
+    ]
+    frame_count = decoded["frame_count"]
+    metadata = {
+        "container_extension": path.suffix.lower(),
+        "fps": round(decoded["fps"], 3) if decoded["fps"] else None,
+        "frame_count": frame_count,
+        "duration_seconds": decoded["duration_seconds"],
+        "width": decoded["width"],
+        "height": decoded["height"],
         "sampled_frame_count": len(samples),
     }
+    if frame_count == 0:
+        detail = "The video container opened, but sequential decoding returned no readable frames."
+        severity = "warning"
+    else:
+        detail = (
+            f"Sequential decoding read {frame_count} frames and retained "
+            f"{len(samples)} representative samples. Frame sampling is not, by itself, a deepfake detection result."
+        )
+        severity = "info"
     observations = [{
         "code": "VIDEO_FRAMES_SAMPLED",
         "title": "Video structure inspected",
-        "detail": (
-            f"Read {len(samples)} representative frames from {frame_count} reported frames. "
-            "Frame sampling is not, by itself, a deepfake detection result."
-        ),
+        "detail": detail,
         "category": "video",
-        "severity": "info",
+        "severity": severity,
     }]
     return metadata, observations, samples
-
 
 def inspect_audio(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     try:
