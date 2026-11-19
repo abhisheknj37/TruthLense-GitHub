@@ -66,3 +66,57 @@ def test_optional_integration_status_is_explicit_and_does_not_reveal_paths(monke
     assert status["face_consistency"]["threshold_config_valid"] is False
     assert status["face_consistency"]["review_threshold"] == 0.35
 
+def test_c2pa_missing_manifest_is_not_reported_as_verification_error(monkeypatch, tmp_path):
+    import sys
+    import types
+    import app.services.advanced_forensics as forensic
+
+    class ManifestNotFound(Exception):
+        pass
+
+    class Reader:
+        def __init__(self, mime, stream):
+            pass
+
+        def __enter__(self):
+            raise ManifestNotFound("no JUMBF data found")
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(forensic.importlib.util, "find_spec", lambda name: object() if name == "c2pa" else None)
+    monkeypatch.setitem(sys.modules, "c2pa", types.SimpleNamespace(Reader=Reader))
+    image = tmp_path / "plain.jpg"
+    image.write_bytes(b"not-a-real-jpeg-but-sufficient-for-reader-stub")
+
+    result = forensic.verify_c2pa(image)
+
+    assert result["status"] == "manifest_not_present"
+    assert "does not indicate manipulation" in result["note"]
+    assert "verification_error" != result["status"]
+
+
+def test_c2pa_unexpected_reader_error_remains_verification_error(monkeypatch, tmp_path):
+    import sys
+    import types
+    import app.services.advanced_forensics as forensic
+
+    class Reader:
+        def __init__(self, mime, stream):
+            pass
+
+        def __enter__(self):
+            raise RuntimeError("native validator crashed")
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(forensic.importlib.util, "find_spec", lambda name: object() if name == "c2pa" else None)
+    monkeypatch.setitem(sys.modules, "c2pa", types.SimpleNamespace(Reader=Reader))
+    image = tmp_path / "plain.jpg"
+    image.write_bytes(b"test")
+
+    result = forensic.verify_c2pa(image)
+
+    assert result["status"] == "verification_error"
+    assert "native validator crashed" in result["detail"]
