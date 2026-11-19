@@ -13,7 +13,15 @@ def _configure_tesseract(pytesseract) -> str:
     configured_path = os.getenv("TRUTHLENS_TESSERACT_CMD", "").strip()
     if configured_path:
         pytesseract.pytesseract.tesseract_cmd = str(Path(configured_path).expanduser())
-    return os.getenv("TRUTHLENS_OCR_LANGUAGES", "eng").strip() or "eng"
+    languages = os.getenv("TRUTHLENS_OCR_LANGUAGES", "eng").strip() or "eng"
+    # Fail early with a precise status instead of returning a generic OCR error.
+    pytesseract.get_tesseract_version()
+    installed = set(pytesseract.get_languages(config=""))
+    requested = {language.strip() for language in languages.split("+") if language.strip()}
+    missing = sorted(requested - installed)
+    if missing:
+        raise RuntimeError("Missing Tesseract language traineddata: " + ", ".join(missing))
+    return languages
 
 
 def _prepare_image(image: Image.Image) -> Image.Image:
@@ -45,11 +53,12 @@ def extract_image_text(path: Path) -> dict[str, Any]:
             "note": "OCR is best-effort extraction. Non-English languages require matching Tesseract traineddata; verify extracted text against the original.",
         }
     except Exception as exc:
-        missing = "TesseractNotFoundError" in type(exc).__name__
+        missing = "TesseractNotFoundError" in type(exc).__name__ or "TesseractNotFoundError" in str(exc)
+        language_missing = "Missing Tesseract language traineddata:" in str(exc)
         return {
-            "status": "engine_not_found" if missing else "error",
+            "status": "engine_not_found" if missing else "language_data_missing" if language_missing else "error",
             "text": "",
-            "note": "Tesseract executable not found. Install Tesseract and set TRUTHLENS_TESSERACT_CMD." if missing else f"OCR could not process this image: {type(exc).__name__}. Check that configured language traineddata is installed.",
+            "note": "Tesseract executable not found. Install Tesseract and set TRUTHLENS_TESSERACT_CMD." if missing else str(exc) if language_missing else f"OCR could not process this image: {type(exc).__name__}. Check the image and OCR configuration.",
         }
 
 
@@ -88,9 +97,10 @@ def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
             "note": "Sequentially decoded sampled-frame OCR only; not full-video transcription or claim verification. Non-English languages require installed Tesseract traineddata.",
         }
     except Exception as exc:
-        missing = "TesseractNotFoundError" in type(exc).__name__
+        missing = "TesseractNotFoundError" in type(exc).__name__ or "TesseractNotFoundError" in str(exc)
+        language_missing = "Missing Tesseract language traineddata:" in str(exc)
         return {
-            "status": "engine_not_found" if missing else "error",
+            "status": "engine_not_found" if missing else "language_data_missing" if language_missing else "error",
             "frames": [],
-            "note": "Tesseract executable not found; configure TRUTHLENS_TESSERACT_CMD." if missing else f"Video OCR could not complete: {type(exc).__name__}. Check the video decoder and installed language traineddata.",
+            "note": "Tesseract executable not found; configure TRUTHLENS_TESSERACT_CMD." if missing else str(exc) if language_missing else f"Video OCR could not complete: {type(exc).__name__}. Check the video decoder and OCR configuration.",
         }
