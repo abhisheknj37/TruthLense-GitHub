@@ -40,6 +40,7 @@ from app.services.image_comparison import compare_images
 from app.services.text_analysis import analyze_text_context
 from app.services.claim_verification import verify_claims
 from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
+from app.services.evidence_storage import store_original, resolve_original, delete_case_originals
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
@@ -72,6 +73,7 @@ async def analyze_case(
     pair_media: Annotated[bool, Form()] = False,
     sha256_digests: Annotated[str, Form()] = "[]",
     case_title: Annotated[str, Form()] = "",
+    retain_originals: Annotated[bool, Form()] = False,
     current_user: dict = Depends(get_current_user),
 ):
     if not files:
@@ -89,6 +91,7 @@ async def analyze_case(
         ) from exc
 
     assets: list[AssetResult] = []
+    report_id = str(uuid4())
     retained_paths: dict[str, list[Path]] = {}
     extracted_text: list[str] = []
     for index, upload in enumerate(files):
@@ -114,6 +117,16 @@ async def analyze_case(
             client_digest = client_digests[index] if client_digests else None
             integrity_verification = compare_sha256(client_digest, server_digest)
             integrity_verification["checked_at"] = datetime.now(timezone.utc).isoformat()
+            asset_id = str(uuid4())
+            evidence_storage = store_original(
+                temporary_path,
+                uid=str(current_user["uid"]),
+                report_id=report_id,
+                asset_id=asset_id,
+                filename=filename,
+                digest=server_digest,
+                retain=retain_originals,
+            )
 
             video_analysis: dict = {}
             text_extraction: dict = {}
@@ -214,7 +227,7 @@ async def analyze_case(
                 result["media_type"], model_assessment, video_analysis
             )
             assets.append(AssetResult(
-                asset_id=str(uuid4()),
+                asset_id=asset_id,
                 filename=filename,
                 media_type=result["media_type"],
                 size_bytes=size,
@@ -230,6 +243,7 @@ async def analyze_case(
                 provenance=provenance,
                 text_extraction=text_extraction,
                 uncertainty_assessment=uncertainty_assessment,
+                evidence_storage=evidence_storage,
             ))
         except MediaError as exc:
             for retained in retained_paths.values():
@@ -343,7 +357,6 @@ async def analyze_case(
     text_analysis["semantic_comparison"] = await run_in_threadpool(
         compare_semantic_sources, semantic_sources
     )
-    report_id = str(uuid4())
     evidence_events = append_case_events(
         report_id,
         [asset.model_dump() for asset in assets],
@@ -402,20 +415,45 @@ async def analyze_case(
 
 @router.get("/cases/{report_id}/chain-of-custody")
 def case_chain_of_custody(report_id: str, current_user: dict = Depends(get_current_user)):
-    events = get_case_events(report_id)
     uid = str(current_user.get("uid", ""))
-    if events and any(event.get("owner_uid") not in (None, uid) for event in events):
-        raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
+    report = get_user_report(uid, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    events = get_case_events(report_id)
     return {"report_id": report_id, "events": events, "verification": verify_case_chain(report_id)}
 
 
 @router.get("/cases/{report_id}/chain-of-custody/verify")
 def verify_case_chain_endpoint(report_id: str, current_user: dict = Depends(get_current_user)):
-    events = get_case_events(report_id)
-    uid = str(current_user.get("uid", ""))
-    if events and any(event.get("owner_uid") not in (None, uid) for event in events):
-        raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
+    if get_user_report(str(current_user.get("uid", "")), report_id) is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
     return verify_case_chain(report_id)
+
+
+@router.get("/cases/{report_id}/chain-of-custody/manifest")
+def export_chain_manifest(report_id: str, current_user: dict = Depends(get_current_user)):
+    report = get_user_report(str(current_user["uid"]), report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    events = get_case_events(report_id)
+    return {
+        "manifest_version": "1.0",
+        "report_id": report_id,
+        "case_title": report.get("case_title"),
+        "created_at": report.get("created_at"),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "assets": [{
+            "asset_id": asset.get("asset_id"),
+            "filename": asset.get("filename"),
+            "media_type": asset.get("media_type"),
+            "size_bytes": asset.get("size_bytes"),
+            "sha256": asset.get("sha256"),
+            "evidence_storage": asset.get("evidence_storage"),
+        } for asset in report.get("assets", [])],
+        "events": events,
+        "verification": verify_case_chain(report_id),
+        "limitation": "Local hash-linked manifest; not independently timestamped or externally anchored.",
+    }
 
 
 @router.post("/ocr/benchmark")
@@ -475,8 +513,34 @@ def delete_saved_report(
     """Delete a saved case and its heatmap artifacts for its owner."""
     if not delete_user_report(current_user["uid"], report_id):
         raise HTTPException(status_code=404, detail="Investigation not found.")
+    delete_case_originals(str(current_user["uid"]), report_id)
     return {"deleted": True, "report_id": report_id}
 
+
+
+@router.get("/reports/{report_id}/assets/{asset_id}/original")
+def download_original_evidence(
+    report_id: str,
+    asset_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    report = get_user_report(str(current_user["uid"]), report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    asset = next((item for item in report.get("assets", []) if item.get("asset_id") == asset_id), None)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Evidence item not found.")
+    path, state = resolve_original(str(current_user["uid"]), report_id, asset)
+    if path is None:
+        code = 410 if state == "expired" else 404
+        raise HTTPException(status_code=code, detail=f"Original evidence is unavailable: {state}.")
+    storage = asset.get("evidence_storage") or {}
+    return FileResponse(
+        path,
+        media_type=storage.get("media_type") or "application/octet-stream",
+        filename=Path(asset.get("filename") or "evidence").name,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.put("/reports/{report_id}/assets/{asset_id}/ocr-correction")
