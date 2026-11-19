@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 from PIL import Image
+
+
+def _configure_tesseract(pytesseract) -> None:
+    configured_path = os.getenv("TRUTHLENS_TESSERACT_CMD", "").strip()
+    if configured_path:
+        pytesseract.pytesseract.tesseract_cmd = str(Path(configured_path).expanduser())
 
 
 def extract_image_text(path: Path) -> dict[str, Any]:
@@ -15,6 +22,7 @@ def extract_image_text(path: Path) -> dict[str, Any]:
     except ImportError:
         return {"status": "unavailable", "text": "", "note": "Install pytesseract and the Tesseract OCR engine to enable OCR."}
     try:
+        _configure_tesseract(pytesseract)
         with Image.open(path) as image:
             text = pytesseract.image_to_string(image).strip()
         return {"status": "completed", "text": text[:12000], "engine": "Tesseract OCR", "note": "OCR may contain recognition errors; verify against the original image."}
@@ -27,6 +35,7 @@ def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
         import pytesseract
     except ImportError:
         return {"status": "unavailable", "frames": [], "note": "Install pytesseract and the Tesseract OCR engine to enable video-frame OCR."}
+    _configure_tesseract(pytesseract)
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         return {"status": "error", "frames": [], "note": "Video could not be opened for OCR."}
