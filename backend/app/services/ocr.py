@@ -148,9 +148,24 @@ def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
     confidence = result["mean_word_confidence"]
     confidence_level, confidence_note = _ocr_note(confidence)
     text = result["text"][:12000]
+    visible = [char for char in text if not char.isspace()]
+    alphanumeric_ratio = sum(char.isalnum() for char in visible) / len(visible) if visible else 0.0
+    # Preserve raw OCR for review, but do not pass unreliable text into claims/correlation.
+    analysis_eligible = bool(
+        text and confidence is not None and confidence >= 45
+        and result["word_count"] >= 3 and alphanumeric_ratio >= 0.55
+    )
     return {
         "status": "completed" if text else "completed_no_text",
         "text": text,
+        "analysis_text": text if analysis_eligible else "",
+        "analysis_eligible": analysis_eligible,
+        "analysis_gate": {
+            "minimum_mean_word_confidence": 45,
+            "minimum_word_count": 3,
+            "minimum_alphanumeric_ratio": 0.55,
+            "observed_alphanumeric_ratio": round(alphanumeric_ratio, 3),
+        },
         "engine": "Tesseract OCR",
         "languages": languages,
         "character_count": len(text),
