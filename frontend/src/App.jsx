@@ -286,29 +286,47 @@ function CaseRow({ report, onOpen }) {
 function AuthScreen({ mode, setMode, email, setEmail, password, setPassword, displayName, setDisplayName, busy, error, onSubmit, onGoogle }) {
   const creating = mode === "signup";
   return <div className="auth-screen">
-    <div className="auth-orbit auth-orbit-a" /><div className="auth-orbit auth-orbit-b" />
+    <div className="auth-backdrop-glow" />
+    <div className="auth-scene auth-scene-left">
+      <div className="scene-panel-heading"><b>Evidence Files</b><span>03 ITEMS</span></div>
+      <div className="scene-evidence-grid">
+        <div className="scene-evidence scene-image"><ImageIcon size={25} /><small>image.jpg</small><i>✓</i></div>
+        <div className="scene-evidence scene-video"><Video size={25} /><small>video.mp4</small><i>✓</i></div>
+        <div className="scene-evidence scene-audio"><AudioLines size={25} /><small>audio.wav</small><i>✓</i></div>
+      </div>
+      <div className="scene-panel-foot"><Fingerprint size={15} /> Original media · Evidence preserved</div>
+    </div>
+    <div className="auth-scene auth-scene-right">
+      <div className="scene-scan-card">
+        <div className="scan-frame"><Fingerprint size={82} /><span className="scan-corner c1" /><span className="scan-corner c2" /><span className="scan-corner c3" /><span className="scan-corner c4" /></div>
+        <b>Evidence analysis</b><div className="scan-progress"><i /></div><small>Multimodal review workspace</small>
+      </div>
+      <div className="scene-meta-card"><b>Evidence Metadata</b><span>File type <strong>Image / Video / Audio</strong></span><span>Integrity <strong>SHA-256</strong></span><span>Review <strong>Human-led</strong></span></div>
+    </div>
     <div className="auth-card">
-      <div className="auth-brand"><span className="brand-mark"><Fingerprint size={24} /></span>
-        <div><b>TRUTHLENS</b><small>FORENSIC INTELLIGENCE</small></div></div>
-      <span className="section-kicker">SECURE WORKSPACE ACCESS</span>
-      <h1>{creating ? "Create your account." : "Welcome back."}</h1>
-      <p className="auth-subtitle">Sign in to access your investigations, evidence reports and forensic workspace.</p>
+      <div className="auth-brand"><span className="brand-mark"><Fingerprint size={27} /></span>
+        <div><b>Truth<span>Lens</span></b><small>DIGITAL FORENSICS & EVIDENCE REVIEW</small></div></div>
+      <div className="auth-heading">
+        <h1>{creating ? "Create your account" : "Digital Forensics & Evidence Review"}</h1>
+        <p>{creating ? "Create a secure workspace to investigate and review digital evidence." : "Analyze, verify, and report digital evidence with confidence."}</p>
+      </div>
       <form onSubmit={onSubmit} className="auth-form">
-        {creating && <label><span>FULL NAME</span><div className="auth-input"><UserRound size={16} /><input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Your name" required /></div></label>}
-        <label><span>EMAIL ADDRESS</span><div className="auth-input"><Mail size={16} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /></div></label>
-        <label><span>PASSWORD</span><div className="auth-input"><LockKeyhole size={16} /><input type="password" autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" minLength={6} required /></div></label>
+        {creating && <label><div className="auth-input"><UserRound size={18} /><input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Full name" required /></div></label>}
+        <label><div className="auth-input"><Mail size={19} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" required /></div></label>
+        <label><div className="auth-input"><LockKeyhole size={19} /><input type="password" autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" minLength={6} required /></div></label>
         {error && <div className="auth-error"><AlertTriangle size={15} />{error}</div>}
         <button className="button button-primary auth-submit" type="submit" disabled={busy}>
           {busy ? <><LoaderCircle className="spin" size={16} /> Please wait…</> : <>{creating ? "Create account" : "Sign in"} <ArrowRight size={16} /></>}
         </button>
       </form>
-      <div className="auth-divider"><span /> OR CONTINUE WITH <span /></div>
-      <button className="button button-quiet auth-google" onClick={onGoogle} disabled={busy}><Globe size={16} /> Continue with Google</button>
-      <p className="auth-switch">{creating ? "Already registered?" : "New to TruthLens?"}
+      <div className="auth-divider"><span /> <small>OR</small> <span /></div>
+      <button className="button button-quiet auth-google" onClick={onGoogle} disabled={busy}><span className="google-g">G</span> Continue with Google</button>
+      <p className="auth-switch">{creating ? "Already have an account?" : "New to TruthLens?"}
         <button onClick={() => setMode(creating ? "signin" : "signup")}>{creating ? "Sign in" : "Create an account"}</button>
       </p>
-      <div className="auth-privacy"><ShieldCheck size={15} /> Firebase-secured sign-in · Your password is never sent to the TruthLens API.</div>
+      <div className="auth-privacy"><ShieldCheck size={15} /> Secure Firebase authentication · Private analyst workspace</div>
     </div>
+    <div className="auth-footer">TRUTHLENS <span>·</span> INVESTIGATE. ANALYZE. VERIFY.</div>
   </div>;
 }
 
@@ -513,11 +531,13 @@ export default function App() {
   }
 
   const nav = [
-    ["dashboard", "Dashboard", <LayoutDashboard size={17} />],
-    ["new", "New investigation", <Plus size={17} />],
-    ["history", "Case history", <FolderOpen size={17} />],
-    ["reports", "Reports", <FileBarChart2 size={17} />],
-    ["settings", "Settings", <Settings size={17} />]
+    ["dashboard", "Home", <LayoutDashboard size={18} />],
+    ["new", "New Investigation", <Plus size={18} />],
+    ["history", "Case History", <FolderOpen size={18} />],
+    ["analysis", "Media Analysis", <Activity size={18} />],
+    ["reports", "Reports", <FileBarChart2 size={18} />],
+    ["help", "Help & Support", <Globe size={18} />],
+    ["settings", "Settings", <Settings size={18} />]
   ];
 
   if (!authReady) return <div className="auth-loading"><LoaderCircle className="spin" size={24} /><span>Securing your TruthLens workspace…</span></div>;
@@ -552,48 +572,83 @@ export default function App() {
 
     <main className="main">
       <header className="topbar">
-        <div className="breadcrumb"><span>Workspace</span><ChevronRight size={13} /><b>{nav.find((item) => item[0] === page)?.[1] || "Dashboard"}</b></div>
-        <div className="topbar-actions"><span className={"api-indicator " + apiStatus}><i /> {apiStatus === "online" ? "API ONLINE" : apiStatus === "offline" ? "API OFFLINE" : "LOCAL WORKSPACE"}</span>
+        <div className="breadcrumb"><span>Workspace</span><ChevronRight size={13} /><b>{nav.find((item) => item[0] === page)?.[1] || "Home"}</b></div>
+        <div className="topbar-actions">
+          <label className="global-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") setPage("history"); }} placeholder="Search investigations, reports…" /></label>
+          <span className={"api-indicator " + apiStatus}><i /> {apiStatus === "online" ? "API ONLINE" : apiStatus === "offline" ? "API OFFLINE" : "WORKSPACE"}</span>
           <button className="top-icon" onClick={checkApi} title="Check backend connection"><Activity size={17} /></button>
           <button className="top-icon" onClick={() => setPage("settings")} title="Settings"><Bell size={17} /></button>
-          <span className="top-avatar">FA</span>
+          <button className="top-user" onClick={() => setPage("settings")}><span className="top-avatar">{(user.displayName || user.email || "FA").slice(0, 2).toUpperCase()}</span><span>{user.displayName || "Investigator"}</span><ChevronRight size={14} /></button>
         </div>
       </header>
 
       {page === "dashboard" && <section className="dashboard-page">
-        <div className="welcome-row"><div><span className="section-kicker">EVIDENCE INTELLIGENCE WORKSPACE</span>
-          <h1>Investigate with clarity.<br /><em>Stay anchored to evidence.</em></h1>
-          <p>Bring media into one review workspace. Inspect model signals, preserve evidence fingerprints and keep the analyst in control.</p>
-          </div><div className="welcome-art"><div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" /><Fingerprint size={78} /></div>
+        <div className="dashboard-hero">
+          <div className="hero-copy"><span className="section-kicker">DIGITAL FORENSICS & DEEPFAKE DETECTION</span>
+            <h1>Truth<span>Lens</span></h1>
+            <h2>Investigate. Analyze. <em>Verify.</em></h2>
+            <p>A multimodal AI-powered forensics platform to detect deepfakes, analyze digital evidence, and generate detailed review reports.</p>
+            <div className="hero-actions">
+              <button className="button button-primary" onClick={newInvestigation}><Plus size={18} /> Start New Investigation</button>
+              <button className="button button-quiet" onClick={() => setPage("history")}><FolderOpen size={17} /> View Case History</button>
+            </div>
+          </div>
+          <div className="hero-visual" aria-hidden="true">
+            <div className="hero-monitor">
+              <div className="monitor-top"><i /><i /><i /><span>TRUTHLENS / LIVE ANALYSIS</span></div>
+              <div className="monitor-content"><div className="hero-face"><div className="face-scan-line" /><div className="face-outline" /></div>
+                <div className="monitor-metrics"><b>MEDIA ANALYSIS</b><span className="signal-pill">● REVIEW SIGNALS</span><div className="waveform">{Array.from({length:16},(_,i)=><i key={i} />)}</div><small>IMAGE · VIDEO · AUDIO</small></div>
+              </div>
+            </div>
+            <div className="hero-fingerprint"><Fingerprint size={38} /></div>
+          </div>
         </div>
-        <div className="dashboard-actions"><button className="button button-primary" onClick={newInvestigation}><Plus size={17} /> Start new investigation <ArrowRight size={16} /></button>
-          <button className="button button-quiet" onClick={() => setPage("history")}><FolderOpen size={16} /> Browse case history</button></div>
-        <div className="stats-grid">
-          <div className="stat-card"><span><FolderOpen size={16} /> SAVED CASES</span><b>{savedReports.length}</b><small>Stored in this browser</small></div>
-          <div className="stat-card"><span><FileImage size={16} /> EVIDENCE ITEMS</span><b>{reviewedAssets}</b><small>Across saved investigations</small></div>
-          <div className="stat-card"><span><Activity size={16} /> MODEL ASSESSMENTS</span><b>{savedReports.reduce((sum, item) => sum + item.assets.filter((asset) => asset.model_assessment?.status === "model_assessed").length, 0)}</b><small>Signals returned by models</small></div>
-          <div className="stat-card"><span><ShieldCheck size={16} /> REVIEW STATUS</span><b>Human-led</b><small>Automated outputs need review</small></div>
+
+        <label className="quick-upload">
+          <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg"
+            onChange={(event) => { addFiles([...event.target.files]); event.target.value = ""; setPage("new"); }} />
+          <span className="quick-upload-main"><UploadCloud size={30} /><b>Upload Evidence</b><small>Drag, drop or click to select files</small></span>
+          <span className="quick-upload-types">
+            <span><i className="type-image"><ImageIcon size={23} /></i><b>Image</b></span>
+            <span><i className="type-video"><Video size={23} /></i><b>Video</b></span>
+            <span><i className="type-audio"><AudioLines size={23} /></i><b>Audio</b></span>
+            <span><i className="type-document"><FileBarChart2 size={23} /></i><b>Reports</b></span>
+          </span>
+        </label>
+
+        <div className="stats-grid dashboard-stats">
+          <div className="stat-card"><span><FolderOpen size={17} /> TOTAL CASES</span><b>{savedReports.length}</b><small>Saved investigations</small></div>
+          <div className="stat-card"><span><ShieldAlert size={17} /> MANIPULATION SIGNALS</span><b>{savedReports.reduce((sum, item) => sum + item.assets.filter((asset) => (asset.video_analysis?.prediction || asset.model_assessment?.prediction) === "fake_signal").length, 0)}</b><small>Signals requiring analyst review</small></div>
+          <div className="stat-card"><span><FileBarChart2 size={17} /> REPORTS GENERATED</span><b>{savedReports.length}</b><small>Reports saved in this browser</small></div>
+          <div className="stat-card"><span><FileImage size={17} /> MEDIA ANALYZED</span><b>{reviewedAssets}</b><small>Evidence items across cases</small></div>
         </div>
+
         <div className="dashboard-lower">
           <div className="content-panel recent-panel">
-            <div className="panel-title"><div><span className="section-kicker">RECENT ACTIVITY</span><h2>Recent investigations</h2></div>
+            <div className="panel-title"><div><span className="section-kicker">CASE REGISTER</span><h2>Recent investigations</h2></div>
               <button className="text-button" onClick={() => setPage("history")}>View all <ArrowRight size={14} /></button></div>
-            {latestReports.length ? latestReports.slice(0, 4).map((report) => <CaseRow key={report.report_id} report={report} onOpen={() => openReport(report)} />)
-              : <div className="empty-state"><div className="empty-icon"><FolderOpen size={22} /></div><b>No investigations yet</b><p>Your completed cases will appear here after the first analysis.</p><button className="button button-quiet" onClick={newInvestigation}><Plus size={15} /> Create first case</button></div>}
+            {latestReports.length ? <div className="recent-case-table">
+              <div className="recent-case-head"><span>Case ID / Title</span><span>Evidence</span><span>Updated</span><span>Status</span></div>
+              {latestReports.slice(0, 4).map((report) => <CaseRow key={report.report_id} report={report} onOpen={() => openReport(report)} />)}
+            </div> : <div className="empty-state"><div className="empty-icon"><FolderOpen size={22} /></div><b>No investigations yet</b><p>Your completed cases will appear here after the first analysis.</p><button className="button button-quiet" onClick={newInvestigation}><Plus size={15} /> Create first case</button></div>}
           </div>
-          <div className="content-panel pipeline-overview">
-            <span className="section-kicker">HOW TRUTHLENS WORKS</span><h2>Four stages. One evidence trail.</h2>
-            <div className="overview-step"><span>01</span><div><b>Media inspection</b><small>File type, metadata and fingerprint</small></div></div>
-            <div className="overview-step"><span>02</span><div><b>Modality analysis</b><small>Image, video frame and speech signals</small></div></div>
-            <div className="overview-step"><span>03</span><div><b>Evidence correlation</b><small>Compare only user-confirmed paired media</small></div></div>
-            <div className="overview-step"><span>04</span><div><b>Human review & reporting</b><small>Interpret findings and export evidence</small></div></div>
-            <div className="safety-note"><Shield size={15} /> Model scores are not proof of authenticity.</div>
+          <div className="content-panel analysis-summary">
+            <div className="panel-title"><div><span className="section-kicker">AI ANALYSIS SUMMARY</span><h2>Multimodal review</h2></div><ShieldCheck size={20} /></div>
+            <div className="analysis-summary-body"><div className="analysis-ring"><div><b>4</b><small>Review stages</small></div></div>
+              <div className="analysis-checks">
+                <span><CheckCircle2 size={16} /> Face-region analysis</span>
+                <span><CheckCircle2 size={16} /> Video frame sampling</span>
+                <span><CheckCircle2 size={16} /> Audio speech analysis</span>
+                <span><CheckCircle2 size={16} /> Metadata & SHA-256</span>
+              </div>
+            </div>
+            <p className="summary-disclaimer">Model outputs are investigative signals, not proof of authenticity. Human review remains essential.</p>
           </div>
         </div>
       </section>}
 
-      {page === "new" && <section className="investigation-page">
-        <div className="page-heading"><div><span className="section-kicker">CASE WORKSPACE / INGEST</span><h1>New investigation</h1><p>Upload original evidence files to begin a multimodal review.</p></div>
+      {(page === "new" || page === "analysis") && <section className="investigation-page">
+        <div className="page-heading"><div><span className="section-kicker">CASE WORKSPACE / INGEST</span><h1>{page === "analysis" ? "Media analysis" : "New investigation"}</h1><p>Upload original evidence files to begin a multimodal review.</p></div>
           <div className="secure-badge"><ShieldCheck size={15} /> Evidence-first workflow</div></div>
         <Pipeline loading={loading} uploadProgress={uploadProgress} report={activeReport} />
         {loading && <div className="progress-panel"><div><b>{uploadProgress >= 100 ? "Evidence received · model analysis running" : "Uploading evidence"}</b><span>{uploadProgress}% transferred</span></div><div className="progress-track"><i style={{ width: uploadProgress + "%" }} /></div><small>Upload transfer is measured by the browser. Model-stage telemetry is not currently streamed by the API.</small></div>}
@@ -659,6 +714,17 @@ export default function App() {
             <CaseRow report={report} onOpen={() => openReport(report)} />
             <button className="delete-record" onClick={() => removeSavedReport(report.report_id)} title="Delete saved report"><Trash2 size={15} /></button>
           </div>) : <div className="empty-state"><div className="empty-icon"><FileBarChart2 size={22} /></div><b>No saved reports found</b><p>Run an investigation to create a case record. Reports are stored locally in this browser.</p></div>}
+        </div>
+      </section>}
+
+      {page === "help" && <section className="settings-page help-page">
+        <div className="page-heading"><div><span className="section-kicker">TRUTHLENS / SUPPORT</span><h1>Help & Support</h1><p>Quick guidance for running an evidence review.</p></div>
+          <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> Start an investigation</button></div>
+        <div className="settings-grid">
+          <div className="content-panel settings-card"><span className="section-kicker">01 / GETTING STARTED</span><h2>Upload your evidence</h2><p>Add supported image, video, or speech-audio files. You can attach up to eight files, with a 40 MB limit per file.</p></div>
+          <div className="content-panel settings-card"><span className="section-kicker">02 / REVIEW FINDINGS</span><h2>Interpret model signals</h2><p>Review modality outputs, metadata, SHA-256 fingerprints and available attribution or sampled-frame details. A model score is not a calibrated probability.</p></div>
+          <div className="content-panel settings-card"><span className="section-kicker">03 / SAVE YOUR WORK</span><h2>Case history & reports</h2><p>Completed case reports are saved in this browser and can be reopened from Case History. Export a JSON or print-ready PDF copy.</p></div>
+          <div className="content-panel settings-card"><span className="section-kicker">04 / CONNECTION</span><h2>Backend status</h2><p>Use the connection control in the top bar or Settings to test the TruthLens API. The FastAPI backend must be running for analysis requests.</p><button className="button button-quiet" onClick={checkApi}><Activity size={15} /> Test API connection</button></div>
         </div>
       </section>}
 
