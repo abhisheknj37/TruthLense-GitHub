@@ -142,30 +142,33 @@ def _ocr_note(confidence: float | None) -> tuple[str, str]:
     return "high", "OCR confidence is a Tesseract recognition estimate, not a probability that the text or media is authentic."
 
 
+def _ocr_analysis_gate(text: str, confidence: float | None, word_count: int) -> dict[str, Any]:
+    visible = [char for char in text if not char.isspace()]
+    ratio = sum(char.isalnum() for char in visible) / len(visible) if visible else 0.0
+    eligible = bool(text.strip() and confidence is not None and confidence >= 45 and word_count >= 3 and ratio >= 0.55)
+    return {
+        "analysis_text": text if eligible else "",
+        "analysis_eligible": eligible,
+        "analysis_gate": {
+            "minimum_mean_word_confidence": 45,
+            "minimum_word_count": 3,
+            "minimum_alphanumeric_ratio": 0.55,
+            "observed_alphanumeric_ratio": round(ratio, 3),
+        },
+    }
+
+
 def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
     variants, preprocessing = _prepare_image_variants(image)
     result = _extract_with_confidence(pytesseract, variants, languages)
     confidence = result["mean_word_confidence"]
     confidence_level, confidence_note = _ocr_note(confidence)
     text = result["text"][:12000]
-    visible = [char for char in text if not char.isspace()]
-    alphanumeric_ratio = sum(char.isalnum() for char in visible) / len(visible) if visible else 0.0
-    # Preserve raw OCR for review, but do not pass unreliable text into claims/correlation.
-    analysis_eligible = bool(
-        text and confidence is not None and confidence >= 45
-        and result["word_count"] >= 3 and alphanumeric_ratio >= 0.55
-    )
+    gate = _ocr_analysis_gate(text, confidence, result["word_count"])
     return {
         "status": "completed" if text else "completed_no_text",
         "text": text,
-        "analysis_text": text if analysis_eligible else "",
-        "analysis_eligible": analysis_eligible,
-        "analysis_gate": {
-            "minimum_mean_word_confidence": 45,
-            "minimum_word_count": 3,
-            "minimum_alphanumeric_ratio": 0.55,
-            "observed_alphanumeric_ratio": round(alphanumeric_ratio, 3),
-        },
+        **gate,
         "engine": "Tesseract OCR",
         "languages": languages,
         "character_count": len(text),
