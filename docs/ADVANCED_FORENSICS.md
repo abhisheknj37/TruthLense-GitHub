@@ -63,6 +63,28 @@ cd backend
 Install the system Tesseract and FFmpeg executables separately where applicable. First-run model downloads may be large. All missing dependencies, weights and unsupported formats should remain visible as unavailable/inconclusive states.
 
 
+## OCR setup on Windows
+
+1. Install the Tesseract OCR Windows installer from the UB Mannheim Tesseract distribution page (the installer is maintained separately from this Python project).
+2. In a new PowerShell terminal, verify the executable:
+   ```powershell
+   tesseract --version
+   tesseract --list-langs
+   ```
+3. Install the Python wrapper from the backend virtual environment:
+   ```powershell
+   cd E:\TruthLense-GitHub\backend
+   .\.venv\Scripts\python.exe -m pip install pytesseract
+   ```
+4. Edit `backend/.env` and set the executable path if Tesseract is not on PATH:
+   ```dotenv
+   TRUTHLENS_TESSERACT_CMD=C:/Program Files/Tesseract-OCR/tesseract.exe
+   TRUTHLENS_OCR_LANGUAGES=eng
+   ```
+5. Restart FastAPI and run a new investigation. Existing reports are not reprocessed automatically.
+
+TruthLens checks both the executable and each requested language code. OCR returns `engine_not_found` or `language_data_missing` with a clear note when setup is incomplete. Add another language only after its matching traineddata is installed, for example `eng+hin`. OCR output is best-effort text extraction and must be checked against the source image/frame.
+
 ## Windows optional-integration configuration
 
 Optional integrations are configured on the backend computer, not in the browser. From PowerShell, create the backend environment file once:
