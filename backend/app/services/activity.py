@@ -209,6 +209,31 @@ def list_user_activity(user_uid: str, limit: int = 20) -> list[dict[str, Any]]:
     } for row in rows]
 
 
+def get_user_activity_summary(user_uid: str) -> dict[str, int]:
+    """Aggregate all saved investigations for the account, not just the visible feed page."""
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT evidence_count, verified_count, evidence_json
+               FROM investigation_activity WHERE user_uid = ?""",
+            (user_uid,),
+        ).fetchall()
+    total_evidence = 0
+    total_verified = 0
+    manipulation_signals = 0
+    for row in rows:
+        total_evidence += int(row["evidence_count"])
+        total_verified += int(row["verified_count"])
+        for evidence in json.loads(row["evidence_json"]):
+            if evidence.get("prediction") == "fake_signal":
+                manipulation_signals += 1
+    return {
+        "case_count": len(rows),
+        "evidence_count": total_evidence,
+        "verified_count": total_verified,
+        "manipulation_signals": manipulation_signals,
+    }
+
+
 def get_user_report(user_uid: str, report_id: str) -> dict[str, Any] | None:
     with _connect() as connection:
         row = connection.execute(
