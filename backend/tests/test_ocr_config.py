@@ -60,3 +60,21 @@ def test_prepare_image_variants_returns_contrast_and_thresholded_images():
     assert "deskew_correction_degrees" in metadata
     assert "CLAHE contrast" in metadata["preprocessing"]
     assert "adaptive threshold" in metadata["preprocessing"]
+
+def test_low_confidence_ocr_is_preserved_but_not_eligible_for_claim_analysis():
+    from app.services.ocr import _ocr_analysis_gate
+
+    gate = _ocr_analysis_gate("Be ae a ao aad 5", 33.1, 6)
+
+    assert gate["analysis_eligible"] is False
+    assert gate["analysis_text"] == ""
+    assert gate["analysis_gate"]["minimum_mean_word_confidence"] == 45
+
+
+def test_clearer_ocr_can_pass_quality_gate_without_being_authenticity_verdict():
+    from app.services.ocr import _ocr_analysis_gate
+
+    gate = _ocr_analysis_gate("The meeting starts at noon tomorrow.", 82.0, 7)
+
+    assert gate["analysis_eligible"] is True
+    assert gate["analysis_text"] == "The meeting starts at noon tomorrow."
