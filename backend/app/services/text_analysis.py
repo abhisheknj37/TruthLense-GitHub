@@ -4,9 +4,9 @@ import re
 from collections import Counter
 from typing import Any
 
-URL_RE = re.compile(r"https?://[^\\s]+", re.I)
-DATE_RE = re.compile(r"\\b(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{4}-\\d{2}-\\d{2})\\b")
-TIME_RE = re.compile(r"\\b(?:[01]?\\d|2[0-3]):[0-5]\\d(?:\\s?[AP]M)?\\b", re.I)
+URL_RE = re.compile(r"https?://[^\s]+", re.I)
+DATE_RE = re.compile(r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})\b")
+TIME_RE = re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[AP]M)?\b", re.I)
 CLAIM_TERMS = {
     "urgent_language": ("urgent", "breaking", "share immediately", "forward this", "viral"),
     "certainty_language": ("100% real", "confirmed", "undeniable", "proof", "definitely"),
@@ -25,7 +25,7 @@ def analyze_text_context(text: str) -> dict[str, Any]:
         found = [term for term in terms if term in lower]
         if found:
             cues.append({"type": code, "matched_terms": found, "interpretation": "A language pattern to review, not evidence that the claim is false."})
-    words = re.findall(r"[\\w']+", lower)
+    words = re.findall(r"[\w']+", lower)
     return {
         "status": "review_cues_extracted",
         "character_count": len(clean),
