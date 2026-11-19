@@ -8,9 +8,9 @@ import httpx
 
 def extract_claims(text: str, limit: int = 8) -> list[str]:
     claims = []
-    for sentence in re.split(r"(?<=[.!?])\\s+", text.strip()):
-        sentence = re.sub(r"\\s+", " ", sentence).strip()
-        if len(sentence) >= 35 and re.search(r"\\b(is|are|was|were|has|have|causes|increases|decreases|found|shows|reported|according)\\b", sentence, re.I):
+    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
+        sentence = re.sub(r"\s+", " ", sentence).strip()
+        if len(sentence) >= 35 and re.search(r"\b(is|are|was|were|has|have|causes|increases|decreases|found|shows|reported|according)\b", sentence, re.I):
             claims.append(sentence[:500])
         if len(claims) >= limit:
             break
