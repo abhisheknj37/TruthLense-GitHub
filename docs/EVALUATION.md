@@ -64,3 +64,7 @@ Review the output's group split, dataset hash, raw vs calibrated held-out Brier/
 
 
 For a deployment that runs several model pipelines, point `TRUTHLENS_CALIBRATION_ARTIFACT` at a private directory containing one JSON artifact per checkpoint/pipeline pair. TruthLens selects only an artifact whose exact `model_id` and `pipeline` match the current evidence item; unapproved, mismatched or invalid candidates are not applied.
+
+
+## Claim-to-source semantic review
+When OpenAlex returns an abstract, TruthLens can compare the extracted claim against the abstract using the optional local NLI checkpoint. Both premise directions are evaluated, and the report displays source metadata, available abstract excerpts and candidate entailment/contradiction/neutral scores. NLI scores are uncalibrated and trained on general English NLI datasets; they are not evidence that the cited source directly supports the claim. Review the paper, methods, date, population, and exact cited passage manually.

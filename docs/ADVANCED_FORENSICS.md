@@ -174,3 +174,6 @@ No labelled dataset or approved calibration artifact is bundled. Until project-s
 
 
 Temporal adapter contract is intentionally strict: it accepts exactly one scalar output and reports it as an unverified raw value. A value in the numerical range [0,1] is not treated as a probability unless the checkpoint's output semantics have been independently documented and validated. Multi-logit or multi-class outputs are rejected rather than silently taking the first element.
+
+
+OpenAlex claim research requests the available abstract inverted index and reconstructs a bounded abstract excerpt where the record provides one. When local NLI is enabled, each extracted claim is compared bidirectionally with available candidate abstracts. The report displays source title, year, venue, DOI/link, excerpt and NLI candidate relationship. OpenAlex relevance and NLI labels are not fact verification; inspect the original paper and passage before drawing conclusions.

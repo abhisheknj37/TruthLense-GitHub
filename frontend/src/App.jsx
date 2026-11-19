@@ -642,10 +642,25 @@ function TextContextReview({ report }) {
     </div>)}
     {(result.dates || []).length > 0 && <p><b>Dates extracted:</b> {(result.dates || []).join(", ")}</p>}
     {(result.urls || []).length > 0 && <p><b>URLs supplied:</b> {(result.urls || []).join(", ")}</p>}
-    {result.claim_verification?.results?.map((item, index) => <div className="observation" key={index}>
+    {result.claim_verification?.results?.map((item, index) => <div className="claim-source-review" key={index}>
       <div><b>Claim · {item.verdict?.replaceAll("_", " ")}</b><p>{item.claim}</p>
-        <small>{(item.candidate_sources || []).slice(0, 3).map((source) => source.title + (source.year ? " (" + source.year + ")" : "")).join(" · ") || "No candidate scholarly sources returned"}</small>
+        <small>{item.provider || "OpenAlex candidate discovery"} · no automatic true/false verdict</small>
       </div>
+      {(item.candidate_sources || []).slice(0, 3).map((source, sourceIndex) => <article key={source.openalex_id || sourceIndex}>
+        <b>{source.title || "Untitled scholarly record"}{source.year ? " (" + source.year + ")" : ""}</b>
+        <small>{source.venue || "Publication venue not available"}{source.doi ? " · DOI: " + source.doi : ""}</small>
+        {source.url && <a href={source.url} target="_blank" rel="noreferrer">Open candidate source</a>}
+        {source.abstract_excerpt && <p>{source.abstract_excerpt}</p>}
+      </article>)}
+      {item.semantic_review?.status && <div className="claim-semantic-review">
+        <b>Semantic comparison of claim and abstract</b>
+        <small>{item.semantic_review.status === "completed" ? item.semantic_review.model : item.semantic_review.note || "NLI model not configured or unavailable"}</small>
+        {item.semantic_review.comparisons?.map((comparison, comparisonIndex) => <div key={comparisonIndex}>
+          <span className={"semantic-candidate " + comparison.review_label}>{comparison.review_label.replaceAll("_", " ")}</span>
+          <small>{comparison.source_b} · contradiction {comparison.a_to_b.contradiction.toFixed(3)} · entailment {comparison.a_to_b.entailment.toFixed(3)} · neutral {comparison.a_to_b.neutral.toFixed(3)}</small>
+        </div>)}
+        <p>{item.semantic_review.limitation || item.semantic_review.note}</p>
+      </div>}
     </div>)}
     {result.semantic_comparison?.status && <div className="semantic-review-block">
       <b>SEMANTIC EVIDENCE REVIEW</b>
