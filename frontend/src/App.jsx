@@ -110,6 +110,7 @@ function exportPdf(report) {
       (asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h3>Image forensic parameters</h3><pre>" + escapeHtml(JSON.stringify(asset.forensic_parameters, null, 2)) + "</pre>" : "") +
       (asset.provenance ? "<h3>Evidence provenance</h3><pre>" + escapeHtml(JSON.stringify(asset.provenance, null, 2)) + "</pre>" : "") +
       (asset.text_extraction ? "<h3>OCR / transcription</h3><pre>" + escapeHtml(JSON.stringify(asset.text_extraction, null, 2)) + "</pre>" : "") +
+      (asset.model_assessment?.audio_review_timeline ? "<h3>Audio waveform and acoustic review</h3><pre>" + escapeHtml(JSON.stringify(asset.model_assessment.audio_review_timeline, null, 2)) + "</pre>" : "") +
       (asset.video_analysis?.temporal_forensics ? "<h3>Temporal video review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.temporal_forensics, null, 2)) + "</pre>" : "") +
       (asset.video_analysis?.face_identity_consistency ? "<h3>Face consistency review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.face_identity_consistency, null, 2)) + "</pre>" : "") +
       "</section>";
@@ -269,6 +270,15 @@ function ModelAssessment({ asset }) {
         </div>)}
       </div>
       <p className="model-note">Frames are sampled and assessed independently; this is not temporal or lip-sync detection.</p>
+    </div>}
+    {asset.media_type === "audio" && model.audio_review_timeline?.waveform?.length > 0 && <div className="audio-segments">
+      <b>Audio waveform · acoustic review</b>
+      <div className="waveform" role="img" aria-label="Audio amplitude waveform">
+        {model.audio_review_timeline.waveform.map((point, index) => <span key={index} title={point.timestamp_seconds + "s"} style={{ height: Math.max(3, Math.min(100, Math.abs(point.amplitude_max - point.amplitude_min) * 90)) + "%" }} />)}
+      </div>
+      <small>{model.audio_review_timeline.duration_seconds}s · {model.audio_review_timeline.method}</small>
+      <p className="model-note">{model.audio_review_timeline.interpretation}</p>
+      {model.audio_review_timeline.acoustic_review_points?.map((point, index) => <p key={index}>{point.timestamp_seconds}s · unusual energy review cue · RMS {point.rms}</p>)}
     </div>}
     {asset.media_type === "audio" && segments.length > 0 && <div className="audio-segments">
       <b>Speech segment analysis</b>
