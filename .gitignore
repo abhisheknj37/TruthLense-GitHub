@@ -18,3 +18,6 @@ uploads/
 reports/
 *.log
 .DS_Store
+
+# Firebase Admin service-account credentials
+backend/firebase-service-account*.json
