@@ -96,7 +96,7 @@ function exportPdf(report) {
     "<h2>Limitations and review notes</h2><ul>" + limitations + "</ul>" +
     "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p>" +
     "<script>window.onload=function(){window.print()}<\/script></body></html>";
-  const win = window.open("", "_blank", "noopener,noreferrer");
+  const win = window.open("", "_blank");
   if (!win) return false;
   win.document.open();
   win.document.write(html);
@@ -283,8 +283,36 @@ export default function App() {
   });
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(savedReports)); }
-    catch { setNotice("Browser storage is full. Export important cases as JSON before closing this session."); }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedReports));
+    } catch {
+      // Grad-CAM overlays can be large. Keep the latest reports and omit
+      // embedded overlays only in the storage fallback; explicit exports retain them.
+      const compact = (items) => items.map((report) => ({
+        ...report,
+        assets: report.assets.map((asset) => ({
+          ...asset,
+          model_assessment: {
+            ...(asset.model_assessment || {}),
+            faces: (asset.model_assessment?.faces || []).map((face) => ({
+              ...face,
+              gradcam_overlay_base64: null
+            }))
+          }
+        }))
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(compact(savedReports.slice(0, 10))));
+        setNotice("Case history was saved in compact mode to fit browser storage. JSON/PDF exports remain available.");
+      } catch {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(compact(savedReports.slice(0, 3))));
+          setNotice("Browser storage is limited. Only the three most recent compact case reports were retained locally.");
+        } catch {
+          setNotice("Browser storage is full. Export important cases as JSON or PDF before closing this session.");
+        }
+      }
+    }
   }, [savedReports]);
   useEffect(() => {
     localStorage.setItem("truthlens.workspace-name", workspaceName);
