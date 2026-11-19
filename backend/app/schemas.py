@@ -27,6 +27,8 @@ class AssetResult(BaseModel):
     forensic_parameters: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
     text_extraction: dict[str, Any] = Field(default_factory=dict)
+    uncertainty_assessment: dict[str, Any] = Field(default_factory=dict)
+    evidence_storage: dict[str, Any] = Field(default_factory=dict)
 
 
 class CaseReport(BaseModel):

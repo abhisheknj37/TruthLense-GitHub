@@ -31,7 +31,7 @@ app.add_middleware(
         r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     ),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
