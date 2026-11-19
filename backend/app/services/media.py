@@ -64,7 +64,7 @@ def inspect_image(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return metadata, observations
 
 
-def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     capture = cv2.VideoCapture(str(path))
     if not capture.isOpened():
         raise MediaError("The uploaded video could not be decoded by OpenCV.")
