@@ -42,3 +42,4 @@ class CaseReport(BaseModel):
     limitations: list[str]
     human_review_required: bool = True
     case_title: str | None = None
+    analyst_review: dict[str, Any] | None = None

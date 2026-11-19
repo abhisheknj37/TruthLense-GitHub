@@ -26,6 +26,7 @@ from app.services.activity import (
     get_user_report,
     list_user_activity,
     save_report_and_activity,
+    save_user_report_review,
 )
 from app.services.correlation import correlate_modalities
 from app.services.integrity import compare_sha256
@@ -33,7 +34,7 @@ from app.services.media import MediaError, inspect_media
 from app.services.provenance import inspect_provenance
 from app.services.ocr import extract_image_text, extract_video_frame_text
 from app.services.transcription import transcribe_audio
-from app.services.text_analysis import analyze_text_context
+from app.services.text_analysis import analyze_text_context, compare_text_sources
 from app.services.claim_verification import verify_claims
 from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
@@ -45,6 +46,12 @@ from app.services.storage import upload_original_media, download_original_media,
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
 MAX_FILES_PER_CASE = 8
+REVIEW_DECISIONS = {
+    "supports_no_obvious_manipulation",
+    "manipulation_suspected",
+    "inconclusive",
+    "escalate_for_more_evidence",
+}
 video_detector = VideoDeepfakeAnalyzer(image_detector)
 
 
@@ -88,6 +95,15 @@ async def analyze_case(
     assets: list[AssetResult] = []
     retained_paths: dict[str, list[Path]] = {}
     extracted_text: list[str] = []
+    text_sources: list[dict] = []
+    if context_text.strip():
+        text_sources.append({
+            "source_id": "investigator-context",
+            "source_type": "user_supplied_claim_or_caption",
+            "label": "Investigator-supplied claim / caption / context",
+            "filename": None,
+            "text": context_text.strip()[:20000],
+        })
     for index, upload in enumerate(files):
         filename = Path(upload.filename or "upload").name
         suffix = Path(filename).suffix.lower()
@@ -182,6 +198,31 @@ async def analyze_case(
                 ))
 
             asset_id = str(uuid4())
+            if result["media_type"] == "image":
+                source_text = str(text_extraction.get("text") or "").strip()
+                source_type = "image_ocr_caption"
+                source_label = f"Visible text in {filename}"
+            elif result["media_type"] == "video":
+                frame_lines = [
+                    f"[{frame.get('timestamp_seconds', 'unknown')}s] {frame.get('text', '').strip()}"
+                    for frame in text_extraction.get("frames", [])
+                    if str(frame.get("text") or "").strip()
+                ]
+                source_text = "\\n".join(frame_lines)
+                source_type = "video_frame_ocr_caption"
+                source_label = f"On-screen text in {filename}"
+            else:
+                source_text = str(text_extraction.get("text") or "").strip()
+                source_type = "audio_transcript"
+                source_label = f"Speech transcript from {filename}"
+            if source_text:
+                text_sources.append({
+                    "source_id": asset_id,
+                    "source_type": source_type,
+                    "label": source_label,
+                    "filename": filename,
+                    "text": source_text[:20000],
+                })
             storage_path = upload_original_media(
                 temporary_path,
                 owner_uid=str(current_user["uid"]),
@@ -266,8 +307,9 @@ async def analyze_case(
             "the supplied evidence remains inconclusive."
         )
 
-    combined_text = "\n\n".join([context_text, *extracted_text]).strip()
+    combined_text = "\n\n".join(source["text"] for source in text_sources).strip()
     text_analysis = analyze_text_context(combined_text)
+    text_analysis["source_comparison"] = compare_text_sources(text_sources)
     if combined_text:
         text_analysis["claim_verification"] = await verify_claims(combined_text)
     report_id = str(uuid4())
@@ -376,6 +418,46 @@ def saved_report(
     if report is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
     return report
+
+
+@router.post("/reports/{report_id}/review")
+def submit_analyst_review(
+    report_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Persist a human assessment separately from automated model indicators."""
+    decision = str(payload.get("decision") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    reviewed_asset_ids = payload.get("reviewed_asset_ids", [])
+    if decision not in REVIEW_DECISIONS:
+        raise HTTPException(status_code=400, detail="Choose a supported analyst review decision.")
+    if len(notes) < 5 or len(notes) > 5000:
+        raise HTTPException(status_code=400, detail="Analyst notes must contain 5 to 5,000 characters.")
+    if not isinstance(reviewed_asset_ids, list) or any(not isinstance(item, str) for item in reviewed_asset_ids):
+        raise HTTPException(status_code=400, detail="reviewed_asset_ids must be an array of asset IDs.")
+
+    report = get_user_report(current_user["uid"], report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    available_ids = {str(asset.get("asset_id")) for asset in report.get("assets", [])}
+    if not set(reviewed_asset_ids).issubset(available_ids):
+        raise HTTPException(status_code=400, detail="One or more reviewed asset IDs do not belong to this case.")
+
+    review = {
+        "status": "completed",
+        "decision": decision,
+        "notes": notes,
+        "reviewed_asset_ids": sorted(set(reviewed_asset_ids)),
+        "reviewed_by_uid": str(current_user.get("uid", "")),
+        "reviewer": str(current_user.get("email") or current_user.get("name") or "Authenticated analyst"),
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        "scope_note": "This is a human assessment recorded for the case. It does not convert model indicators into proof or certify authenticity.",
+    }
+    if not save_user_report_review(current_user["uid"], report_id, review):
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    updated = get_user_report(current_user["uid"], report_id)
+    return updated
 
 
 @router.delete("/reports/{report_id}")

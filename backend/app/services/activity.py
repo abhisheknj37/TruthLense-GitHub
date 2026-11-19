@@ -381,6 +381,50 @@ def get_user_report(user_uid: str, report_id: str) -> dict[str, Any] | None:
     return report
 
 
+def save_user_report_review(
+    user_uid: str,
+    report_id: str,
+    review: dict[str, Any],
+) -> bool:
+    """Update only the analyst-review block on a report owned by this user."""
+    if is_postgres_enabled():
+        from psycopg.types.json import Jsonb
+
+        with connect_postgres() as connection:
+            row = connection.execute(
+                """SELECT id, report_json FROM public.truthlens_cases
+                   WHERE firebase_uid = %s AND report_id = %s AND deleted_at IS NULL
+                   FOR UPDATE""",
+                (user_uid, report_id),
+            ).fetchone()
+            if row is None:
+                return False
+            report = _decode_json(row["report_json"])
+            report["analyst_review"] = review
+            connection.execute(
+                """UPDATE public.truthlens_cases
+                   SET report_json = %s, updated_at = now()
+                   WHERE id = %s AND firebase_uid = %s""",
+                (Jsonb(report), row["id"], user_uid),
+            )
+        return True
+
+    with _connection() as connection:
+        row = connection.execute(
+            "SELECT report_json FROM case_reports WHERE user_uid = ? AND report_id = ?",
+            (user_uid, report_id),
+        ).fetchone()
+        if row is None:
+            return False
+        report = json.loads(row["report_json"])
+        report["analyst_review"] = review
+        connection.execute(
+            "UPDATE case_reports SET report_json = ? WHERE user_uid = ? AND report_id = ?",
+            (json.dumps(report, separators=(",", ":")), user_uid, report_id),
+        )
+    return True
+
+
 def get_user_heatmap_bytes(user_uid: str, report_id: str, asset_id: str, face_index: int) -> bytes | None:
     if is_postgres_enabled():
         with connect_postgres() as connection:

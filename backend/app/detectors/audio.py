@@ -139,6 +139,17 @@ class AudioDeepfakeDetector:
                 "model_score_type": "softmax_score_not_calibrated_probability",
                 "uncertainty_band": score_band(median_fake),
                 "segments": segments,
+                "voice_synthesis_review": {
+                    "status": "model_indicator_available" if prediction != "inconclusive" else "inconclusive",
+                    "indicator": prediction,
+                    "model": MODEL_ID,
+                    "windows_assessed": len(segments),
+                    "median_fake_model_score": round(median_fake, 5),
+                    "note": (
+                        "This research classifier provides a synthetic/spoof-direction model indicator. "
+                        "It does not identify a speaker, determine who generated the voice, or prove voice cloning."
+                    ),
+                },
                 "note": (
                     "Research speech model trained on a multi-ethnic English audio dataset at approximately 16 kHz. "
                     "The model card reports self-evaluated accuracy, but does not provide enough detail to establish "
