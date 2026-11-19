@@ -329,3 +329,63 @@ def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
             "frames": [],
             "note": "Tesseract executable not found; configure TRUTHLENS_TESSERACT_CMD." if missing else str(exc) if language_missing else f"Video OCR could not complete: {type(exc).__name__}. Check the video decoder and OCR configuration.",
         }
+
+def _rapidocr_extract(image: Image.Image) -> dict[str, Any]:
+    """Run optional RapidOCR as an independent second engine."""
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        return {"status": "engine_not_installed", "engine": "RapidOCR", "text": "",
+                "note": "Install rapidocr-onnxruntime to enable independent OCR comparison."}
+    try:
+        result, _ = RapidOCR()(np.asarray(image.convert("RGB")))
+        lines = [str(item[1]).strip() for item in (result or []) if len(item) > 1 and str(item[1]).strip()]
+        return {"status": "completed" if lines else "completed_no_text", "engine": "RapidOCR",
+                "text": "\\n".join(lines)[:12000], "line_count": len(lines),
+                "note": "Independent OCR engine output; verify against the source."}
+    except Exception as exc:
+        return {"status": "engine_error", "engine": "RapidOCR", "text": "",
+                "note": f"RapidOCR could not process this image: {type(exc).__name__}."}
+
+
+def _normalized_edit_distance(reference: str, hypothesis: str) -> dict[str, Any]:
+    """Character error rate (CER) against an explicitly supplied ground truth."""
+    ref = re.sub(r"\\s+", " ", reference).strip()
+    hyp = re.sub(r"\\s+", " ", hypothesis).strip()
+    if not ref:
+        return {"status": "invalid_reference", "cer": None, "character_errors": None, "reference_characters": 0}
+    previous = list(range(len(hyp) + 1))
+    for row, char in enumerate(ref, 1):
+        current = [row]
+        for col, other in enumerate(hyp, 1):
+            current.append(min(current[-1] + 1, previous[col] + 1,
+                               previous[col - 1] + (char != other)))
+        previous = current
+    errors = previous[-1]
+    return {"status": "scored", "cer": round(errors / len(ref), 4),
+            "character_errors": errors, "reference_characters": len(ref)}
+
+
+def compare_ocr_engines(path: Path) -> dict[str, Any]:
+    """Compare both OCR engines on identical image bytes; never auto-select truth."""
+    tesseract = extract_image_text(path)
+    try:
+        with Image.open(path) as source:
+            rapid = _rapidocr_extract(source.copy())
+    except Exception as exc:
+        rapid = {"status": "image_error", "engine": "RapidOCR", "text": "",
+                 "note": f"Could not open image: {type(exc).__name__}."}
+    left, right = tesseract.get("text", ""), rapid.get("text", "")
+    comparable = bool(left.strip() and right.strip())
+    distance = _normalized_edit_distance(left.casefold(), right.casefold()) if comparable else None
+    return {
+        "status": "compared" if comparable else "partial",
+        "engines": {"tesseract": tesseract, "rapidocr": rapid},
+        "agreement": {
+            "normalized_exact_match": bool(comparable and re.sub(r"\\s+", " ", left).strip().casefold()
+                                           == re.sub(r"\\s+", " ", right).strip().casefold()),
+            "character_similarity": round(1 - distance["cer"], 4) if distance else None,
+        },
+        "note": "Engine disagreement is a review cue, not proof of manipulation. Neither engine is ground truth.",
+    }
+
