@@ -387,7 +387,7 @@ def saved_report(
 
 
 @router.delete("/reports/{report_id}")
-def delete_saved_report(
+async def delete_saved_report(
     report_id: str,
     current_user: dict = Depends(get_current_user),
 ):
