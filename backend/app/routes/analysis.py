@@ -7,9 +7,10 @@ import tempfile
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
+from app.auth import get_current_user
 from app.detectors.audio import audio_detector
 from app.detectors.image import image_detector
 from app.detectors.video import VideoDeepfakeAnalyzer
@@ -42,6 +43,7 @@ async def analyze_case(
     files: Annotated[list[UploadFile], File(description="One or more image, video or audio files")],
     context_text: Annotated[str, Form()] = "",
     pair_media: Annotated[bool, Form()] = False,
+    current_user: dict = Depends(get_current_user),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one media file.")
