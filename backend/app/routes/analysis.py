@@ -8,6 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.detectors.audio import audio_detector
 from app.detectors.image import image_detector
@@ -68,9 +69,9 @@ async def analyze_case(
 
             video_analysis: dict = {}
             if result["media_type"] == "image":
-                model_assessment = image_detector.analyze_image(temporary_path, include_cam=True)
+                model_assessment = await run_in_threadpool(image_detector.analyze_image, temporary_path, True)
             elif result["media_type"] == "video":
-                video_analysis = video_detector.analyze(temporary_path)
+                video_analysis = await run_in_threadpool(video_detector.analyze, temporary_path)
                 model_assessment = {
                     "status": video_analysis.get("status", "inconclusive"),
                     "model_name": video_analysis.get("model_name"),
@@ -81,7 +82,7 @@ async def analyze_case(
                     "note": video_analysis.get("note", ""),
                 }
             else:
-                model_assessment = audio_detector.analyze(temporary_path)
+                model_assessment = await run_in_threadpool(audio_detector.analyze, temporary_path)
 
             observations = [Observation(**item) for item in result["observations"]]
             if model_assessment.get("status") == "model_assessed":
