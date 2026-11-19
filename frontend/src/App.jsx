@@ -416,12 +416,12 @@ function ModelAssessment({ asset }) {
   const frames = video.frames || [];
   const segments = model.segments || [];
   return <div className="model-result">
-    <div className="section-kicker">MODEL ASSESSMENT</div>
+    <div className="section-kicker">{asset.media_type === "audio" ? "AUDIO AUTHENTICITY INDICATORS · RESEARCH MODEL" : "MODEL ASSESSMENT"}</div>
     <div className="model-result-head">
       <b>{predictionLabel(details.prediction)}</b>
       <span className={"model-pill " + (assessed ? "available" : "pending")}>{assessed ? "Signal available" : "Inconclusive"}</span>
     </div>
-    {details.model_name && <small className="model-name">{details.model_name}</small>}
+    {details.model_name && <small className="model-name">{details.model_name}</small>}{asset.media_type === "audio" && <p className="model-note">Synthetic / spoof-speech screening only. This model does not identify a cloned speaker, prove voice cloning, or authenticate speaker identity.</p>}
     {details.scores && <div className="score-list">
       {Object.entries(details.scores).filter(([key, value]) => typeof value === "number" && (key.includes("fake") || key.includes("real") || key.includes("ai_generated")))
         .map(([key, value]) => <ScoreBar key={key} label={key} value={value} />)}
@@ -478,11 +478,11 @@ function ModelAssessment({ asset }) {
         {model.audio_review_timeline.waveform.map((point, index) => <span key={index} title={point.timestamp_seconds + "s"} style={{ flex: 1, minWidth: 2, borderRadius: 2, background: "var(--accent, #4f7cff)", height: Math.max(3, Math.min(100, Math.abs(point.amplitude_max - point.amplitude_min) * 90)) + "%" }} />)}
       </div>
       <small>{model.audio_review_timeline.duration_seconds}s · {model.audio_review_timeline.method}</small>
-      <p className="model-note">{model.audio_review_timeline.interpretation}</p>
+      <p className="model-note">{model.audio_review_timeline.interpretation}</p><small>Acoustic review cues are separate from synthetic-speech classification and are not clone detection.</small>
       {model.audio_review_timeline.acoustic_review_points?.map((point, index) => <p key={index}>{point.timestamp_seconds}s · unusual energy review cue · RMS {point.rms}</p>)}
     </div>}
     {asset.media_type === "audio" && segments.length > 0 && <div className="audio-segments">
-      <b>Speech segment analysis</b>
+      <b>Synthetic / spoof-speech model indicators by segment</b>
       {segments.map((segment, index) => <div className="audio-segment" key={index}>
         <div><span>{segment.start_seconds}s – {segment.end_seconds}s</span><b>{scorePercent(segment.fake_model_score)}</b></div>
         <div className="score-track"><i style={{ width: Math.max(0, Math.min(100, (segment.fake_model_score || 0) * 100)) + "%" }} /></div>
@@ -714,6 +714,9 @@ function ReportView({ report, onJson, onPdf, user, onReviewsChange }) {
       <div className="cross-header"><div><span className="section-kicker">RELATIONSHIP REVIEW</span><h3>Cross-modal comparison</h3></div><span className="model-pill pending">No fused authenticity score</span></div>
       {report.cross_modal_review.map((item, index) => <div className="cross-item" key={index}>
         <span className="model-pill pending">{String(item.status).replaceAll("_", " ")}</span>
+        {(item.source_a || item.source_b) && <p><b>{item.source_a_kind || "Source"}:</b> {item.source_a} ↔ <b>{item.source_b_kind || "Source"}:</b> {item.source_b}</p>}
+        {item.shared_terms?.length > 0 && <p><b>Shared terms:</b> {item.shared_terms.join(", ")} · {item.shared_term_count ?? item.shared_terms.length} matched terms</p>}
+        {(item.source_a_preview || item.source_b_preview) && <details><summary>Compare extracted text / claim excerpts</summary>{item.source_a_preview && <p><b>Source A:</b> {item.source_a_preview}</p>}{item.source_b_preview && <p><b>Source B:</b> {item.source_b_preview}</p>}</details>}
         <p>{item.detail}</p>
       </div>)}
     </div>}
