@@ -32,11 +32,13 @@ from app.services.provenance import inspect_provenance
 from app.services.ocr import extract_image_text, extract_video_frame_text
 from app.services.transcription import transcribe_audio
 from app.services.text_analysis import analyze_text_context
+from app.services.documents import DocumentError, extract_document
 from app.services.claim_verification import verify_claims
-from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
+from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain, delete_case_events
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
+from app.services.supabase_persistence import persist_case, delete_case as delete_supabase_case, SupabasePersistenceError
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -60,7 +62,7 @@ async def save_upload(upload: UploadFile, destination: Path) -> int:
 
 @router.post("/analyze", response_model=CaseReport)
 async def analyze_case(
-    files: Annotated[list[UploadFile], File(description="One or more image, video or audio files")],
+    files: Annotated[list[UploadFile], File(description="One or more image, video, audio or document evidence files")],
     context_text: Annotated[str, Form()] = "",
     pair_media: Annotated[bool, Form()] = False,
     sha256_digests: Annotated[str, Form()] = "[]",
@@ -68,7 +70,7 @@ async def analyze_case(
     current_user: dict = Depends(get_current_user),
 ):
     if not files:
-        raise HTTPException(status_code=400, detail="Upload at least one media file.")
+        raise HTTPException(status_code=400, detail="Upload at least one evidence file.")
     if len(files) > MAX_FILES_PER_CASE:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES_PER_CASE} files per case.")
     try:
@@ -132,11 +134,16 @@ async def analyze_case(
                     "model_score_type": video_analysis.get("model_score_type"),
                     "note": video_analysis.get("note", ""),
                 }
-            else:
+            elif result["media_type"] == "audio":
                 text_extraction = await run_in_threadpool(transcribe_audio, temporary_path)
                 if text_extraction.get("text"):
                     extracted_text.append(text_extraction["text"])
                 model_assessment = await run_in_threadpool(audio_detector.analyze, temporary_path)
+            else:
+                text_extraction = await run_in_threadpool(extract_document, temporary_path)
+                if text_extraction.get("text"):
+                    extracted_text.append(text_extraction["text"])
+                model_assessment = {"status": "not_applicable", "prediction": "inconclusive", "model_name": None, "note": "Document evidence is reviewed through extracted text and context analysis; no deepfake classifier is applied to document files."}
 
             observations = [Observation(**item) for item in result["observations"]]
             if integrity_verification["status"] == "mismatch":
@@ -156,7 +163,9 @@ async def analyze_case(
                     severity="info",
                 ))
 
-            if model_assessment.get("status") == "model_assessed":
+            if result["media_type"] == "document":
+                pass
+            elif model_assessment.get("status") == "model_assessed":
                 observations.append(Observation(
                     code="MODEL_SIGNAL_AVAILABLE",
                     title="Research model produced an indicator",
@@ -194,7 +203,7 @@ async def analyze_case(
                 provenance=provenance,
                 text_extraction=text_extraction,
             ))
-        except MediaError as exc:
+        except (MediaError, DocumentError) as exc:
             for retained in retained_paths.values():
                 for retained_path in retained:
                     retained_path.unlink(missing_ok=True)
@@ -279,6 +288,7 @@ async def analyze_case(
         limitations=[
             "Model softmax scores are not calibrated probabilities or proof of authenticity.",
             "The image classifier is intended for face-cropped images and may not generalize to all image types or generators.",
+            "Text, Markdown, CSV, PDF and DOCX files are parsed for text review; scanned PDF pages without selectable text require OCR and may remain empty.",
             "The audio model was trained on a limited set of speech/TTS sources; performance on unseen systems, languages, codecs and noisy recordings is uncertain.",
             "Video analysis samples a limited number of face-bearing frames; it is not a validated temporal deepfake detector.",
             "Cross-modal comparison checks separate model signals only; it does not prove that audio and video are synchronized or belong to the same source.",
@@ -300,12 +310,24 @@ async def analyze_case(
     )
 
     try:
+        supabase_synced = await run_in_threadpool(
+            persist_case, report.model_dump(mode="json"), str(current_user["uid"]), title
+        )
+        report.cross_modal_review.append({
+            "type": "supabase_cloud_persistence",
+            "status": "synced" if supabase_synced else "not_configured",
+            "detail": "Case metadata, asset analysis and hash-linked events were mirrored to the configured Supabase project." if supabase_synced else "Supabase service credentials are not configured; this case is stored in the local backend database only.",
+        })
         save_report_and_activity(
             user_uid=current_user["uid"],
             report=report.model_dump(mode="json"),
             case_title=title,
         )
+    except SupabasePersistenceError as exc:
+        delete_case_events(report_id, str(current_user["uid"]))
+        raise HTTPException(status_code=503, detail=f"Local case persistence was not completed because Supabase cloud sync failed: {exc}") from exc
     except Exception as exc:
+        delete_case_events(report_id, str(current_user["uid"]))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The analysis finished, but TruthLens could not persist the case record. Check backend data-directory permissions.",
@@ -365,13 +387,21 @@ def saved_report(
 
 
 @router.delete("/reports/{report_id}")
-def delete_saved_report(
+async def delete_saved_report(
     report_id: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Delete a saved case and its heatmap artifacts for its owner."""
-    if not delete_user_report(current_user["uid"], report_id):
+    uid = str(current_user["uid"])
+    if get_user_report(uid, report_id) is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
+    try:
+        await run_in_threadpool(delete_supabase_case, report_id, uid)
+    except SupabasePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=f"Cloud case deletion failed; local case was retained: {exc}") from exc
+    if not delete_user_report(uid, report_id):
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    delete_case_events(report_id, uid)
     return {"deleted": True, "report_id": report_id}
 
 
@@ -413,6 +443,7 @@ def capabilities():
             "image": [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"],
             "video": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
             "audio": [".wav", ".flac", ".ogg"],
+            "document": [".txt", ".md", ".csv", ".pdf", ".docx"],
         },
         "max_file_bytes": MAX_FILE_BYTES,
         "max_files_per_case": MAX_FILES_PER_CASE,
@@ -429,6 +460,7 @@ def capabilities():
             "image face-crop classification and optional transformer patch attribution",
             "video sampled-frame classification and timestamps",
             "audio speech-window classification",
+            "document text extraction for TXT, Markdown, CSV, searchable PDF and DOCX",
             "paired audio/video model-signal comparison when user confirms related media",
             "client-to-server SHA-256 integrity comparison",
             "user-scoped persistent report and activity history",

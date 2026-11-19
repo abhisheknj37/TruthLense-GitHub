@@ -71,3 +71,22 @@ def verify_case_chain(report_id: str) -> dict[str, Any]:
             return {"status": "integrity_error", "report_id": report_id, "events_checked": len(rows), "failed_event_id": row["id"]}
         previous = row["event_hash"]
     return {"status": "valid", "report_id": report_id, "events_checked": len(rows), "last_event_hash": previous, "note": "Valid local hash chain. This does not provide trusted timestamps, external anchoring, or protection from replacement of the entire database."}
+
+
+def delete_case_events(report_id: str, owner_uid: str) -> bool:
+    """Delete ledger rows only when the case's first event belongs to this user."""
+    with _connect() as db:
+        rows = db.execute(
+            "SELECT payload_json FROM evidence_events WHERE report_id=? ORDER BY id LIMIT 1",
+            (report_id,),
+        ).fetchone()
+        if rows is None:
+            return False
+        try:
+            owner = json.loads(rows["payload_json"]).get("owner_uid")
+        except (TypeError, json.JSONDecodeError):
+            return False
+        if owner != owner_uid:
+            return False
+        db.execute("DELETE FROM evidence_events WHERE report_id=?", (report_id,))
+    return True
