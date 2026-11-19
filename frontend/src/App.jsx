@@ -566,6 +566,32 @@ export default function App() {
   const [activitySummary, setActivitySummary] = useState({ case_count: 0, evidence_count: 0, verified_count: 0, manipulation_signals: 0 });
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState("");
+  const [optionalIntegrations, setOptionalIntegrations] = useState({});
+  const [optionalIntegrationsLoading, setOptionalIntegrationsLoading] = useState(false);
+  const [optionalIntegrationsError, setOptionalIntegrationsError] = useState("");
+  const [optionalIntegrationsRefresh, setOptionalIntegrationsRefresh] = useState(0);
+
+  useEffect(() => {
+    if (page !== "settings" || !user) return undefined;
+    let cancelled = false;
+    setOptionalIntegrationsLoading(true);
+    setOptionalIntegrationsError("");
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await axios.get(API + "/api/capabilities", {
+          timeout: 15000,
+          headers: { Authorization: "Bearer " + token }
+        });
+        if (!cancelled) setOptionalIntegrations(response.data.optional_integration_status || {});
+      } catch (err) {
+        if (!cancelled) setOptionalIntegrationsError(err.response?.data?.detail || "Could not read optional integration status from the backend.");
+      } finally {
+        if (!cancelled) setOptionalIntegrationsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [page, user, optionalIntegrationsRefresh]);
 
   useEffect(() => observeAuth((nextUser) => {
     setUser(nextUser);
@@ -1057,6 +1083,24 @@ export default function App() {
             <button className="button button-primary" onClick={checkApi}><Activity size={16} /> Test API connection</button>
             <div className={"connection-state " + apiStatus}><i /> {apiStatus === "online" ? "Backend reachable" : apiStatus === "offline" ? "Backend unreachable" : apiStatus === "checking" ? "Checking connection…" : "Connection not checked"}</div>
             {apiMessage && <p className="settings-help">{apiMessage}</p>}</div>
+          <div className="content-panel settings-card optional-integrations-card">
+            <div className="optional-integrations-heading"><div><span className="section-kicker">ADVANCED MODULES</span><h2>Optional integration status</h2></div>
+              <button className="button button-quiet" onClick={() => setOptionalIntegrationsRefresh((value) => value + 1)} disabled={optionalIntegrationsLoading}>
+                <Activity size={14} /> {optionalIntegrationsLoading ? "Checking…" : "Refresh"}
+              </button></div>
+            <p className="settings-help">These checks run on the backend machine. A ready status confirms detected prerequisites only; it does not guarantee model inference or validate model accuracy.</p>
+            {optionalIntegrationsLoading && <p className="settings-help">Reading backend configuration…</p>}
+            {optionalIntegrationsError && <p className="settings-help">{optionalIntegrationsError}</p>}
+            {Object.entries(optionalIntegrations).length > 0 && <div className="integration-status-list">
+              {Object.entries(optionalIntegrations).map(([key, item]) => <div className="integration-status-item" key={key}>
+                <div className="integration-status-top"><b>{key.replaceAll("_", " ")}</b><span className="integration-status-tag">{String(item.status || "unknown").replaceAll("_", " ")}</span></div>
+                <small>{item.note}</small>
+                {item.missing?.length > 0 && <small className="integration-missing">Needs: {item.missing.join(", ")}</small>}
+              </div>)}
+            </div>}
+            {!optionalIntegrationsLoading && !optionalIntegrationsError && !Object.keys(optionalIntegrations).length && <p className="settings-help">No integration status received yet. Check that the updated backend is running.</p>}
+            <p className="settings-help">Configure optional modules in backend/.env, restart FastAPI, then refresh this panel. See docs/ADVANCED_FORENSICS.md.</p>
+          </div>
           <div className="content-panel settings-card"><span className="section-kicker">DATA & PRIVACY</span><h2>Server-side case storage</h2>
             <p>Completed reports and real model-attribution PNGs are saved by the TruthLens backend and scoped to your verified Firebase account. The dashboard refreshes its activity feed every 8 seconds. Original uploaded media is processed from temporary files and is not retained as a case attachment.</p>
             <div className="settings-metric"><b>{activityEvents.length}</b><span>Reports stored by the API for this account</span></div>
