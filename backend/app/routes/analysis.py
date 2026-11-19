@@ -175,6 +175,12 @@ async def analyze_case(
     )
 
 
+@router.get("/me", tags=["authentication"])
+def current_user_profile(current_user: dict = Depends(get_current_user)):
+    """Return the verified Firebase identity associated with the bearer token."""
+    return current_user
+
+
 @router.get("/capabilities")
 def capabilities():
     return {
