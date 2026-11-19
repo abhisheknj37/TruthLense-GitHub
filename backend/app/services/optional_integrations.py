@@ -40,7 +40,14 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
     }
 
     face_model = os.getenv("TRUTHLENS_FACE_MODEL", "buffalo_l").strip() or "buffalo_l"
-    face_threshold = os.getenv("TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD", "0.35").strip() or "0.35"
+    raw_threshold = os.getenv("TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD", "0.35").strip() or "0.35"
+    try:
+        parsed_threshold = float(raw_threshold)
+        threshold_valid = 0.0 <= parsed_threshold <= 1.0
+    except ValueError:
+        parsed_threshold = 0.35
+        threshold_valid = False
+    face_threshold = parsed_threshold if threshold_valid else 0.35
     face_missing = []
     if not _module_available("insightface"):
         face_missing.append("insightface")
@@ -53,6 +60,8 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "model": face_model,
         "model_cache_present": face_cache.exists(),
         "review_threshold": face_threshold,
+        "threshold_config_valid": threshold_valid,
+        "threshold_note": None if threshold_valid else "Invalid threshold; using the safe default 0.35. Configure a number from 0.0 to 1.0.",
         "note": "Within-video similarity is a heuristic review cue, not identity recognition or proof of a face swap.",
     }
 
@@ -121,7 +130,7 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
     ledger_path = Path(ledger_value).expanduser() if ledger_value else Path(__file__).resolve().parents[2] / "data" / "evidence_ledger.sqlite3"
     result["evidence_ledger"] = {
         "status": "local_hash_linked_ledger",
-        "database": str(ledger_path),
+        "database_name": ledger_path.name,
         "exists": ledger_path.exists(),
         "note": "Local hash-chain verification only; not externally anchored or independently timestamped.",
     }
