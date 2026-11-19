@@ -130,6 +130,7 @@ function exportPdf(report) {
       "<p><b>" + escapeHtml(item.type || "Review") + " · " + escapeHtml(item.status) +
       ":</b> " + escapeHtml(item.detail || item.note || item.interpretation || JSON.stringify(item)) + "</p>").join("") +
     (report.text_analysis ? "<h2>Text and context review</h2><pre>" + escapeHtml(JSON.stringify(report.text_analysis, null, 2)) + "</pre>" : "") +
+    (report.investigator_reviews?.length ? "<h2>Investigator decisions</h2><table>" + report.investigator_reviews.map((item) => "<tr><th>" + escapeHtml(item.finding_id) + "</th><td>" + escapeHtml(item.status) + "</td><td>" + escapeHtml(item.comment || "No analyst note") + "</td><td>" + escapeHtml(item.updated_at || "") + "</td></tr>").join("") + "</table>" : "<h2>Investigator decisions</h2><p>No saved investigator decisions were available at export time.</p>") +
     (report.evidence_events?.length ? "<h2>Hash-linked evidence events</h2><pre>" + escapeHtml(JSON.stringify(report.evidence_events, null, 2)) + "</pre>" : "") +
     "<h2>Limitations and review notes</h2><ul>" + limitations + "</ul>" +
     "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p>" +
@@ -345,7 +346,106 @@ function TextContextReview({ report }) {
   </section>;
 }
 
-function ReportView({ report, onJson, onPdf }) {
+function InvestigatorReview({ report, user, onChange }) {
+  const [reviews, setReviews] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState("");
+  const [error, setError] = useState("");
+
+  const findings = report.assets.flatMap((asset) => {
+    const observations = asset.observations?.length ? asset.observations : [{
+      code: "MODEL_ASSESSMENT",
+      title: "Model assessment",
+      detail: asset.model_assessment?.note || asset.model_assessment?.prediction || "No additional explanation returned."
+    }];
+    return observations.map((item, index) => ({
+      id: asset.asset_id + ":" + String(item.code || index),
+      asset: asset.filename,
+      title: item.title || item.code || "Finding",
+      detail: item.detail || item.note || item.interpretation || "No explanation available."
+    }));
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const token = await user.getIdToken();
+        const response = await axios.get(API + "/api/reports/" + encodeURIComponent(report.report_id) + "/reviews", {
+          headers: { Authorization: "Bearer " + token }, timeout: 15000
+        });
+        if (cancelled) return;
+        const next = {};
+        (response.data.reviews || []).forEach((item) => { next[item.finding_id] = item; });
+        setReviews(next);
+        onChange(Object.values(next));
+        setError("");
+      } catch (err) {
+        if (!cancelled) setError(err.response?.data?.detail || "Could not load saved investigator decisions.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [report.report_id, user]);
+
+  function edit(id, field, value) {
+    setReviews((current) => ({
+      ...current,
+      [id]: { ...(current[id] || { finding_id: id, status: "unreviewed", comment: "" }), [field]: value }
+    }));
+  }
+
+  async function save(id) {
+    setSaving(id);
+    setError("");
+    try {
+      const item = reviews[id] || { status: "unreviewed", comment: "" };
+      const token = await user.getIdToken();
+      const response = await axios.put(
+        API + "/api/reports/" + encodeURIComponent(report.report_id) + "/reviews/" + encodeURIComponent(id),
+        { status: item.status || "unreviewed", comment: item.comment || "" },
+        { headers: { Authorization: "Bearer " + token }, timeout: 15000 }
+      );
+      setReviews((current) => {
+        const next = { ...current, [id]: response.data };
+        onChange(Object.values(next));
+        return next;
+      });
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not save this investigator decision.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  return <section className="cross-review investigator-review">
+    <div className="cross-header"><div><span className="section-kicker">HUMAN REVIEW WORKFLOW</span><h3>Investigator decisions</h3></div>
+      <span className="model-pill pending">{loading ? "Loading…" : findings.length + " findings"}</span></div>
+    <p className="model-note">Record an analyst decision for each finding. These decisions are stored separately from automated model output.</p>
+    {findings.map((finding) => {
+      const item = reviews[finding.id] || {};
+      return <div className="cross-item" key={finding.id}>
+        <b>{finding.title}</b><small>Evidence: {finding.asset}</small><p>{finding.detail}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(150px, 220px) 1fr auto", gap: 10, alignItems: "start", marginTop: 10 }}>
+          <select aria-label={"Decision for " + finding.title} value={item.status || "unreviewed"} onChange={(event) => edit(finding.id, "status", event.target.value)}>
+            <option value="unreviewed">Unreviewed</option><option value="confirmed">Confirmed</option>
+            <option value="rejected">Rejected</option><option value="inconclusive">Inconclusive</option>
+          </select>
+          <textarea aria-label={"Analyst note for " + finding.title} rows={2} maxLength={4000} placeholder="Analyst notes / rationale…" value={item.comment || ""} onChange={(event) => edit(finding.id, "comment", event.target.value)} />
+          <button className="button button-quiet" disabled={saving === finding.id} onClick={() => save(finding.id)}>
+            {saving === finding.id ? "Saving…" : "Save decision"}
+          </button>
+        </div>
+        {item.updated_at && <small>Last saved: {formatDate(item.updated_at)}</small>}
+      </div>;
+    })}
+    {error && <p className="model-note" role="alert">{error}</p>}
+  </section>;
+}
+
+function ReportView({ report, onJson, onPdf, user, onReviewsChange }) {
   const assessed = report.assets.filter((asset) => asset.model_assessment?.status === "model_assessed").length;
   const findings = report.assets.reduce((sum, asset) => sum + (asset.observations || []).filter((item) => item.severity === "warning").length, 0);
   const inconclusive = report.assets.length - assessed;
@@ -375,6 +475,7 @@ function ReportView({ report, onJson, onPdf }) {
     </div>
     <div className="evidence-heading"><div><span className="section-kicker">EVIDENCE REGISTER</span><h3>Asset-by-asset findings</h3></div><span>{report.assets.length} evidence items</span></div>
     <div className="asset-grid">{report.assets.map((asset) => <EvidenceCard key={asset.asset_id} asset={asset} />)}</div>
+    <InvestigatorReview report={report} user={user} onChange={onReviewsChange} />
     {report.cross_modal_review?.length > 0 && <div className="cross-review">
       <div className="cross-header"><div><span className="section-kicker">RELATIONSHIP REVIEW</span><h3>Cross-modal comparison</h3></div><span className="model-pill pending">No fused authenticity score</span></div>
       {report.cross_modal_review.map((item, index) => <div className="cross-item" key={index}>
@@ -1061,7 +1162,7 @@ export default function App() {
             <div className="notice"><AlertTriangle size={16} /><span>Some files may be inconclusive when there is no detectable face, insufficient speech, decoding errors or unsupported model scope.</span></div>
           </aside>
         </div>
-        {activeReport && <ReportView report={activeReport} onJson={() => downloadJson(activeReport)} onPdf={() => {
+        {activeReport && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
       </section>}
@@ -1070,7 +1171,7 @@ export default function App() {
         <div className="page-heading"><div><span className="section-kicker">{page === "history" ? "WORKSPACE / CASE REGISTER" : "WORKSPACE / REPORT LIBRARY"}</span>
           <h1>{page === "history" ? "Case history" : "Reports"}</h1><p>{page === "history" ? "Reopen saved investigations and continue reviewing the evidence." : "Open completed case reports or export an evidence summary."}</p></div>
           <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> New investigation</button></div>
-        {activeReport && page === "reports" && <ReportView report={activeReport} onJson={() => downloadJson(activeReport)} onPdf={() => {
+        {activeReport && page === "reports" && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
         <div className="content-panel record-list-panel">
