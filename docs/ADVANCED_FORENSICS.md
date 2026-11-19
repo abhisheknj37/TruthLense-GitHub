@@ -114,3 +114,8 @@ After editing `.env`, restart FastAPI from the backend folder:
 Open [http://127.0.0.1:8000/api/capabilities](http://127.0.0.1:8000/api/capabilities). The response now includes `optional_integration_status`, with readiness and missing-prerequisite information. The frontend Settings page reads the same data and provides a Refresh button.
 
 A status such as `ready_to_attempt` only means the prerequisite checks passed. Actual inference can still fail due to checkpoint incompatibility, unsupported media, model downloads, device limits or runtime errors. Configure secrets only in local `.env` files or deployment secret storage; never commit credentials or model weights.
+
+
+## Document evidence ingestion
+
+TruthLens accepts TXT, Markdown, CSV, searchable PDF and DOCX files as document evidence. The backend extracts selectable text (up to 100,000 characters per file; PDF extraction is limited to the first 200 pages), includes it in the case text/context triage and optional OpenAlex scholarly-source discovery, and stores the extracted text in the case report. Documents are not passed to image, video or speech deepfake classifiers; their model status is `not_applicable`. Encrypted PDFs are rejected. Scanned PDFs without a selectable text layer return `no_extractable_text`; scanned-page OCR is not part of this document ingestion path. Always compare extracted text with the original document.
