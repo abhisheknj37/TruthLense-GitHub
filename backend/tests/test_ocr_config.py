@@ -78,3 +78,25 @@ def test_clearer_ocr_can_pass_quality_gate_without_being_authenticity_verdict():
 
     assert gate["analysis_eligible"] is True
     assert gate["analysis_text"] == "The meeting starts at noon tomorrow."
+
+def test_text_region_detection_returns_no_regions_for_blank_image():
+    from PIL import Image
+    from app.services.ocr import _detect_text_regions
+
+    image = Image.new("L", (900, 500), "white")
+    assert _detect_text_regions(image) == []
+
+
+def test_text_region_detection_finds_text_like_block():
+    import cv2
+    import numpy as np
+    from PIL import Image
+    from app.services.ocr import _detect_text_regions
+
+    pixels = np.full((500, 900), 255, dtype=np.uint8)
+    for y in (120, 165, 210):
+        cv2.putText(pixels, "TRUTHLENS EVIDENCE REVIEW", (80, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, 0, 2, cv2.LINE_AA)
+    regions = _detect_text_regions(Image.fromarray(pixels))
+    assert regions
+    assert all(x2 > x1 and y2 > y1 for x1, y1, x2, y2 in regions)
