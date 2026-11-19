@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
 import tempfile
 from typing import Annotated
@@ -55,6 +56,10 @@ async def analyze_case(
                 temporary_path = Path(temp.name)
             size = await save_upload(upload, temporary_path)
             result = inspect_media(temporary_path)
+            digest = hashlib.sha256()
+            with temporary_path.open('rb') as evidence_file:
+                for chunk in iter(lambda: evidence_file.read(1024 * 1024), b''):
+                    digest.update(chunk)
             model_result = detector.analyze(temporary_path)
 
             assets.append(AssetResult(
@@ -62,6 +67,7 @@ async def analyze_case(
                 filename=filename,
                 media_type=result["media_type"],
                 size_bytes=size,
+                sha256=digest.hexdigest(),
                 analysis_status="metadata_only",
                 metadata=result["metadata"],
                 observations=[Observation(**item) for item in result["observations"]],
