@@ -24,7 +24,7 @@ The optional `c2pa-python` SDK can read supported manifests and return validatio
 
 ## OCR and speech transcription
 
-OCR requires the optional `pytesseract` Python package and a separately installed Tesseract executable on the backend host. It runs on uploaded images and sampled video frames. OCR text can contain recognition errors.
+OCR prefers the optional `pytesseract` Python package and a separately installed Tesseract executable on the backend host. If these are missing but `rapidocr-onnxruntime` is installed, RapidOCR is used as a fallback for images and sampled video frames. It runs on uploaded images and sampled video frames. OCR text can contain recognition errors.
 
 Speech transcription is optional. Set `TRUTHLENS_ASR_MODEL` to a compatible local or approved Hugging Face ASR model. The first model load may download weights. Transcription can be inaccurate and must be checked against original audio.
 

@@ -125,14 +125,17 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "note": "Independent OCR comparison is available when installed; agreement is not ground truth.",
     }
 
+    tesseract_ready = not ocr_missing and language_status == "available"
     result["ocr"] = {
-        "status": "ready_to_attempt" if not ocr_missing and language_status == "available" else "needs_setup",
+        "status": "tesseract_ready" if tesseract_ready else "rapidocr_fallback_available" if rapidocr_installed else "needs_setup",
+        "primary_engine": "Tesseract OCR" if tesseract_ready else "RapidOCR" if rapidocr_installed else None,
+        "fallback_engine": "RapidOCR" if rapidocr_installed and tesseract_ready else None,
         "missing": ocr_missing,
         "executable": tesseract_display,
         "languages_requested": ocr_languages,
         "language_status": language_status,
         "missing_languages": missing_languages,
-        "note": "OCR runs on images and sampled video frames; verify extracted text against the source. Requested language traineddata is checked when Tesseract is available.",
+        "note": "OCR runs on images and sampled video frames. RapidOCR fallback does not expose the same word-confidence score as the Tesseract quality gate; manually verify extracted text against the source.",
     }
 
     asr_model = os.getenv("TRUTHLENS_ASR_MODEL", "").strip()

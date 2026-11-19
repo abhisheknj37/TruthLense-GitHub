@@ -278,31 +278,108 @@ def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
     }
 
 
+def _rapidocr_image_fallback(path: Path, reason: str) -> dict[str, Any]:
+    try:
+        with Image.open(path) as source:
+            result = _rapidocr_extract(source.copy())
+        if result.get("status") in {"completed", "completed_no_text"}:
+            return {
+                **result,
+                "status": result["status"],
+                "analysis_eligible": bool(result.get("text")),
+                "confidence_level": "unscored",
+                "mean_word_confidence": None,
+                "note": (
+                    f"RapidOCR fallback used because Tesseract was unavailable ({reason}). "
+                    "RapidOCR does not supply the same word-confidence score used by the Tesseract quality gate; "
+                    "review extracted text against the original image."
+                ),
+            }
+        return {
+            "status": "unavailable",
+            "engine": "RapidOCR",
+            "text": "",
+            "analysis_eligible": False,
+            "note": f"Tesseract was unavailable ({reason}) and RapidOCR could not run: {result.get('note', 'unknown error')}",
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "engine": "RapidOCR",
+            "text": "",
+            "analysis_eligible": False,
+            "note": f"Neither OCR engine could process the image: {type(exc).__name__}.",
+        }
+
+
+def _rapidocr_video_fallback(path: Path, max_frames: int, reason: str) -> dict[str, Any]:
+    try:
+        from app.services.media import sample_video_frames
+        decoded = sample_video_frames(path, max_frames)
+        frames = []
+        for sample in decoded["sampled_frames"]:
+            rgb = cv2.cvtColor(sample["frame"], cv2.COLOR_BGR2RGB)
+            result = _rapidocr_extract(Image.fromarray(rgb))
+            if result.get("text"):
+                frames.append({
+                    "timestamp_seconds": sample["timestamp_seconds"],
+                    "frame_index": sample["frame_index"],
+                    **result,
+                    "text": result["text"][:3000],
+                    "analysis_eligible": True,
+                    "confidence_level": "unscored",
+                    "mean_word_confidence": None,
+                })
+        return {
+            "status": "completed" if frames else "completed_no_text",
+            "engine": "RapidOCR",
+            "frames": frames,
+            "decoded_frame_count": decoded["frame_count"],
+            "sampled_frame_count": len(decoded["sampled_frames"]),
+            "note": (
+                f"RapidOCR fallback used because Tesseract was unavailable ({reason}). "
+                "No Tesseract word-confidence score is available; extracted text must be checked against the source."
+            ),
+        }
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "engine": "RapidOCR",
+            "frames": [],
+            "note": f"Tesseract was unavailable ({reason}) and RapidOCR frame extraction failed: {type(exc).__name__}.",
+        }
+
+
 def extract_image_text(path: Path) -> dict[str, Any]:
-    """OCR with conservative preprocessing and explicit word-confidence reporting."""
+    """Prefer Tesseract confidence-aware OCR; fall back to RapidOCR when unavailable."""
     try:
         import pytesseract
     except ImportError:
-        return {"status": "unavailable", "text": "", "note": "Install pytesseract and the Tesseract OCR engine to enable OCR."}
+        return _rapidocr_image_fallback(path, "pytesseract Python package is not installed")
     try:
         languages = _configure_tesseract(pytesseract)
         with Image.open(path) as source:
             return _run_ocr(pytesseract, source.copy(), languages)
     except Exception as exc:
         missing = "TesseractNotFoundError" in type(exc).__name__ or "TesseractNotFoundError" in str(exc)
+        if missing:
+            return _rapidocr_image_fallback(path, "Tesseract executable was not found")
         language_missing = "Missing Tesseract language traineddata:" in str(exc)
         return {
-            "status": "engine_not_found" if missing else "language_data_missing" if language_missing else "error",
+            "status": "language_data_missing" if language_missing else "error",
+            "engine": "Tesseract OCR",
             "text": "",
-            "note": "Tesseract executable not found. Install Tesseract and set TRUTHLENS_TESSERACT_CMD." if missing else str(exc) if language_missing else f"OCR could not process this image: {type(exc).__name__}. Check the image and OCR configuration.",
+            "analysis_eligible": False,
+            "note": str(exc) if language_missing else f"OCR could not process this image: {type(exc).__name__}. Check the image and OCR configuration.",
         }
 
 
-def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
+def extract_video_frame_text(path: Path, max_frames: int = 16) -> dict[str, Any]:
+    """Prefer Tesseract confidence-aware frame OCR; fall back to RapidOCR."""
     try:
         import pytesseract
     except ImportError:
-        return {"status": "unavailable", "frames": [], "note": "Install pytesseract and the Tesseract OCR engine to enable video-frame OCR."}
+        return _rapidocr_video_fallback(path, max_frames, "pytesseract Python package is not installed")
     try:
         from app.services.media import sample_video_frames
         languages = _configure_tesseract(pytesseract)
@@ -326,6 +403,7 @@ def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
             }
         return {
             "status": "completed" if frames else "completed_no_text",
+            "engine": "Tesseract OCR",
             "frames": frames,
             "languages": languages,
             "decoded_frame_count": decoded["frame_count"],
@@ -334,11 +412,14 @@ def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
         }
     except Exception as exc:
         missing = "TesseractNotFoundError" in type(exc).__name__ or "TesseractNotFoundError" in str(exc)
+        if missing:
+            return _rapidocr_video_fallback(path, max_frames, "Tesseract executable was not found")
         language_missing = "Missing Tesseract language traineddata:" in str(exc)
         return {
-            "status": "engine_not_found" if missing else "language_data_missing" if language_missing else "error",
+            "status": "language_data_missing" if language_missing else "error",
+            "engine": "Tesseract OCR",
             "frames": [],
-            "note": "Tesseract executable not found; configure TRUTHLENS_TESSERACT_CMD." if missing else str(exc) if language_missing else f"Video OCR could not complete: {type(exc).__name__}. Check the video decoder and OCR configuration.",
+            "note": str(exc) if language_missing else f"Video OCR could not complete: {type(exc).__name__}. Check the video decoder and OCR configuration.",
         }
 
 def _rapidocr_extract(image: Image.Image) -> dict[str, Any]:

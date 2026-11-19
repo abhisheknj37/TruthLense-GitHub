@@ -156,3 +156,52 @@ def test_ocr_quality_gate_keeps_clear_sentence():
     assert gate["analysis_eligible"] is True
     assert gate["analysis_text"] == text
     assert gate["analysis_gate"]["observed_meaningful_token_count"] >= 2
+
+
+def test_image_ocr_falls_back_to_rapidocr_when_pytesseract_is_missing(monkeypatch, tmp_path):
+    import sys
+    from PIL import Image
+    from app.services import ocr
+
+    image_path = tmp_path / "sample.png"
+    Image.new("RGB", (64, 64), "white").save(image_path)
+    monkeypatch.setitem(sys.modules, "pytesseract", None)
+    monkeypatch.setattr(
+        ocr, "_rapidocr_extract",
+        lambda image: {"status": "completed", "engine": "RapidOCR", "text": "Bridge reopened Monday."},
+    )
+    result = ocr.extract_image_text(image_path)
+    assert result["status"] == "completed"
+    assert result["engine"] == "RapidOCR"
+    assert result["analysis_eligible"] is True
+    assert result["confidence_level"] == "unscored"
+    assert "word-confidence score" in result["note"]
+
+
+def test_video_ocr_falls_back_to_rapidocr_when_pytesseract_is_missing(monkeypatch, tmp_path):
+    import sys
+    import numpy as np
+    from app.services import ocr, media
+
+    frame = np.full((80, 100, 3), 255, dtype=np.uint8)
+    monkeypatch.setitem(sys.modules, "pytesseract", None)
+    monkeypatch.setattr(
+        media, "sample_video_frames",
+        lambda path, max_frames: {
+            "frame_count": 10,
+            "sampled_frames": [{
+                "frame": frame,
+                "timestamp_seconds": 1.5,
+                "frame_index": 3,
+            }],
+        },
+    )
+    monkeypatch.setattr(
+        ocr, "_rapidocr_extract",
+        lambda image: {"status": "completed", "engine": "RapidOCR", "text": "Bridge reopened Monday."},
+    )
+    result = ocr.extract_video_frame_text(tmp_path / "sample.mp4")
+    assert result["status"] == "completed"
+    assert result["engine"] == "RapidOCR"
+    assert result["frames"][0]["timestamp_seconds"] == 1.5
+    assert result["frames"][0]["analysis_eligible"] is True

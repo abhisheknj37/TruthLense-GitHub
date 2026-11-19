@@ -56,7 +56,7 @@ def temporal_video_forensics(path: Path, max_samples: int = 120) -> dict[str, An
         "status": "completed",
         "decoded_frame_count": decoded["frame_count"],
         "sampled_frames": len(samples),
-        "method": "Sequential decoding with reservoir sampling; Farneback optical flow and HSV histogram change analysis",
+        "method": "Two-pass exact temporal stratification; Farneback optical flow and HSV histogram change analysis",
         "sampled_transitions": len(transitions),
         "scene_change_timestamps_seconds": cuts,
         "motion_discontinuity_timestamps_seconds": discontinuities,
