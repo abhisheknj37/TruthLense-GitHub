@@ -9,14 +9,17 @@ from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.detectors.base import UnconfiguredDetector
-from app.schemas import AssetResult, CaseReport, ModelStatus, Observation
-from app.services.media import MediaError, inspect_media, media_type_for
+from app.detectors.audio import audio_detector
+from app.detectors.image import image_detector
+from app.detectors.video import VideoDeepfakeAnalyzer
+from app.schemas import AssetResult, CaseReport, Observation
+from app.services.correlation import correlate_modalities
+from app.services.media import MediaError, inspect_media
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
 MAX_FILES_PER_CASE = 8
-detector = UnconfiguredDetector()
+video_detector = VideoDeepfakeAnalyzer(image_detector)
 
 
 async def save_upload(upload: UploadFile, destination: Path) -> int:
@@ -37,6 +40,7 @@ async def save_upload(upload: UploadFile, destination: Path) -> int:
 async def analyze_case(
     files: Annotated[list[UploadFile], File(description="One or more image, video or audio files")],
     context_text: Annotated[str, Form()] = "",
+    pair_media: Annotated[bool, Form()] = False,
 ):
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one media file.")
@@ -56,11 +60,50 @@ async def analyze_case(
                 temporary_path = Path(temp.name)
             size = await save_upload(upload, temporary_path)
             result = inspect_media(temporary_path)
+
             digest = hashlib.sha256()
-            with temporary_path.open('rb') as evidence_file:
-                for chunk in iter(lambda: evidence_file.read(1024 * 1024), b''):
+            with temporary_path.open("rb") as evidence_file:
+                for chunk in iter(lambda: evidence_file.read(1024 * 1024), b""):
                     digest.update(chunk)
-            model_result = detector.analyze(temporary_path)
+
+            video_analysis: dict = {}
+            if result["media_type"] == "image":
+                model_assessment = image_detector.analyze_image(temporary_path, include_cam=True)
+            elif result["media_type"] == "video":
+                video_analysis = video_detector.analyze(temporary_path)
+                model_assessment = {
+                    "status": video_analysis.get("status", "inconclusive"),
+                    "model_name": video_analysis.get("model_name"),
+                    "prediction": video_analysis.get("prediction", "inconclusive"),
+                    "scores": video_analysis.get("scores", {}),
+                    "uncertainty_band": video_analysis.get("uncertainty_band", "unknown"),
+                    "model_score_type": video_analysis.get("model_score_type"),
+                    "note": video_analysis.get("note", ""),
+                }
+            else:
+                model_assessment = audio_detector.analyze(temporary_path)
+
+            observations = [Observation(**item) for item in result["observations"]]
+            if model_assessment.get("status") == "model_assessed":
+                observations.append(Observation(
+                    code="MODEL_SIGNAL_AVAILABLE",
+                    title="Research model produced an indicator",
+                    detail=(
+                        f"Model: {model_assessment.get('model_name')}. "
+                        f"Signal: {model_assessment.get('prediction')}. "
+                        "Scores are not calibrated forensic probabilities; human review is required."
+                    ),
+                    category="model",
+                    severity="warning" if model_assessment.get("prediction") in {"fake_signal", "inconclusive"} else "info",
+                ))
+            else:
+                observations.append(Observation(
+                    code="MODEL_INCONCLUSIVE",
+                    title="Model assessment is inconclusive",
+                    detail=model_assessment.get("note", "The model did not return an assessable result."),
+                    category="model",
+                    severity="warning",
+                ))
 
             assets.append(AssetResult(
                 asset_id=str(uuid4()),
@@ -68,14 +111,11 @@ async def analyze_case(
                 media_type=result["media_type"],
                 size_bytes=size,
                 sha256=digest.hexdigest(),
-                analysis_status="metadata_only",
+                analysis_status=model_assessment.get("status", "inconclusive"),
                 metadata=result["metadata"],
-                observations=[Observation(**item) for item in result["observations"]],
-                model_assessment=ModelStatus(
-                    status=model_result.status,
-                    model_name=model_result.model_name,
-                    note=model_result.note,
-                ),
+                observations=observations,
+                model_assessment=model_assessment,
+                video_analysis=video_analysis,
                 sampled_frames=result["sampled_frames"],
             ))
         except MediaError as exc:
@@ -85,14 +125,10 @@ async def analyze_case(
             if temporary_path and temporary_path.exists():
                 temporary_path.unlink(missing_ok=True)
 
-    types = {asset.media_type for asset in assets}
-    cross_modal: list[dict[str, str]] = []
-    if "video" in types and "audio" in types:
-        cross_modal.append({
-            "type": "paired_media_review",
-            "status": "human_review_required",
-            "detail": "Video and separate audio assets were supplied. Automatic lip-sync or identity correlation is not configured in this MVP.",
-        })
+    assets_for_correlation = [
+        asset.model_dump() for asset in assets
+    ]
+    cross_modal = correlate_modalities(assets_for_correlation, pair_media)
     if context_text.strip():
         cross_modal.append({
             "type": "user_context",
@@ -100,22 +136,37 @@ async def analyze_case(
             "detail": "User-supplied context was attached to this case; it has not been independently verified.",
         })
 
+    assessed = [
+        asset for asset in assets
+        if asset.model_assessment.get("status") == "model_assessed"
+    ]
+    if assessed:
+        overall_status = "model_indicators_available_human_review_required"
+        summary = (
+            "One or more research models produced modality-specific indicators. "
+            "These outputs are not proof of authenticity; inspect source evidence and limitations."
+        )
+    else:
+        overall_status = "inconclusive"
+        summary = (
+            "No modality produced an assessable model result. Technical observations may still be available; "
+            "the supplied evidence remains inconclusive."
+        )
+
     return CaseReport(
         report_id=str(uuid4()),
         created_at=datetime.now(timezone.utc).isoformat(),
-        overall_status="inconclusive_model_not_configured",
-        summary=(
-            "Technical media metadata was inspected. No validated authenticity model is connected, "
-            "so TruthLens has not classified the supplied media as real or manipulated."
-        ),
+        overall_status=overall_status,
+        summary=summary,
         assets=assets,
         cross_modal_review=cross_modal,
         limitations=[
-            "No trained or validated deepfake detector is connected.",
-            "Metadata presence or absence is not proof of manipulation or authenticity.",
-            "Video frame sampling does not establish temporal authenticity.",
-            "Audio signal statistics do not establish whether speech is synthetic.",
-            "All findings require human review and original-source context.",
+            "Model softmax scores are not calibrated probabilities or proof of authenticity.",
+            "The image classifier is intended for face-cropped images and may not generalize to all image types or generators.",
+            "The audio model was trained on a limited set of speech/TTS sources; performance on unseen systems, languages, codecs and noisy recordings is uncertain.",
+            "Video analysis samples a limited number of face-bearing frames; it is not a validated temporal deepfake detector.",
+            "Cross-modal comparison checks separate model signals only; it does not prove that audio and video are synchronized or belong to the same source.",
+            "All results require human review and original-source context.",
         ],
         human_review_required=True,
     )
@@ -131,11 +182,16 @@ def capabilities():
         },
         "max_file_bytes": MAX_FILE_BYTES,
         "max_files_per_case": MAX_FILES_PER_CASE,
-        "authenticity_models": "not_configured",
+        "models": {
+            "image": image_detector.model_name,
+            "audio": audio_detector.model_name,
+            "video": "sampled face frames evaluated with the image model",
+        },
         "available_analysis": [
-            "image metadata inspection",
-            "video structure and representative frame sampling",
-            "audio signal metadata and level statistics",
-            "case-level human-review notes",
+            "image face-crop classification and optional transformer patch attribution",
+            "video sampled-frame classification and timestamps",
+            "audio speech-window classification",
+            "paired audio/video model-signal comparison when user confirms related media",
+            "SHA-256 evidence fingerprint",
         ],
     }
