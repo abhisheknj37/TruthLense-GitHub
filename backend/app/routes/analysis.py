@@ -38,7 +38,7 @@ from app.services.evidence_ledger import append_case_events, get_case_events, ve
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
-from app.services.supabase_persistence import persist_case, SupabasePersistenceError
+from app.services.supabase_persistence import persist_case, delete_case as delete_supabase_case, SupabasePersistenceError
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -392,9 +392,16 @@ def delete_saved_report(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete a saved case and its heatmap artifacts for its owner."""
-    if not delete_user_report(current_user["uid"], report_id):
+    uid = str(current_user["uid"])
+    if get_user_report(uid, report_id) is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
-    delete_case_events(report_id, str(current_user["uid"]))
+    try:
+        await run_in_threadpool(delete_supabase_case, report_id, uid)
+    except SupabasePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=f"Cloud case deletion failed; local case was retained: {exc}") from exc
+    if not delete_user_report(uid, report_id):
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    delete_case_events(report_id, uid)
     return {"deleted": True, "report_id": report_id}
 
 
