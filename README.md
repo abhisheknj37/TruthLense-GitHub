@@ -5,8 +5,8 @@ Multimodal Digital Forensics and Media Authenticity Analysis.
 
 ## MVP scope
 - Image analysis endpoint and metadata observations
-- Video frame sampling and per-frame image analysis
-- Audio analysis interface (model adapter; no unsupported verdicts)
+- Video metadata inspection and representative frame sampling
+- WAV/FLAC/OGG signal metadata and level measurements
 - Cross-modal evidence correlation as consistency checks, not identity proof
 - Explainable report with limitations and human-review status
 
