@@ -133,6 +133,13 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "note": "Evaluation scripts use a labelled CSV supplied by the project team and do not calibrate live model outputs automatically.",
     }
 
+    supabase_configured = bool(os.getenv("SUPABASE_URL", "").strip() and os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip())
+    result["supabase_persistence"] = {
+        "status": "configured" if supabase_configured else "needs_backend_secrets",
+        "required": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+        "note": "The backend mirrors case metadata, analysis and hash-linked events to Supabase using a server-only service role. Original media files are not uploaded by this integration.",
+    }
+
     ledger_value = os.getenv("TRUTHLENS_LEDGER_DB", "").strip()
     ledger_path = Path(ledger_value).expanduser() if ledger_value else Path(__file__).resolve().parents[2] / "data" / "evidence_ledger.sqlite3"
     result["evidence_ledger"] = {
