@@ -47,15 +47,16 @@ def test_ocr_confidence_is_labeled_as_recognition_quality_not_authenticity():
     assert "authentic" in _ocr_note(85)[1]
 
 
-def test_prepare_image_returns_preprocessing_metadata():
+def test_prepare_image_variants_returns_contrast_and_thresholded_images():
     from PIL import Image
-    from app.services.ocr import _prepare_image
+    from app.services.ocr import _prepare_image_variants
 
     image = Image.new("RGB", (320, 180), "white")
-    prepared, metadata = _prepare_image(image)
+    variants, metadata = _prepare_image_variants(image)
 
-    assert prepared.mode == "L"
-    assert prepared.width >= 320
-    assert prepared.height >= 180
+    assert [name for name, _ in variants] == ["contrast", "otsu", "adaptive"]
+    assert all(item.mode == "L" for _, item in variants)
+    assert all(item.width >= 320 and item.height >= 180 for _, item in variants)
     assert "deskew_correction_degrees" in metadata
     assert "CLAHE contrast" in metadata["preprocessing"]
+    assert "adaptive threshold" in metadata["preprocessing"]
