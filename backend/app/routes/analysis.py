@@ -40,6 +40,7 @@ from app.services.evidence_ledger import append_case_events, get_case_events, ve
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
+from app.services.investigator_review import save_finding_review, list_finding_reviews
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -395,6 +396,34 @@ def delete_saved_report(
         raise HTTPException(status_code=404, detail="Investigation not found.")
     return {"deleted": True, "report_id": report_id}
 
+
+
+@router.get("/reports/{report_id}/reviews")
+def get_finding_reviews(report_id: str, current_user: dict = Depends(get_current_user)):
+    report = get_user_report(current_user["uid"], report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    return {"report_id": report_id, "reviews": list_finding_reviews(current_user["uid"], report_id)}
+
+
+@router.put("/reports/{report_id}/reviews/{finding_id}")
+def put_finding_review(
+    report_id: str,
+    finding_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    report = get_user_report(current_user["uid"], report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    status_value = str(payload.get("status", ""))
+    comment = str(payload.get("comment", ""))
+    try:
+        return save_finding_review(
+            str(current_user["uid"]), report_id, finding_id, status_value, comment
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @router.get("/reports/{report_id}/heatmap")
 def saved_heatmap(
