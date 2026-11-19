@@ -106,7 +106,9 @@ function exportPdf(report) {
       "</p><p><b>Model signal:</b> " + escapeHtml(predictionLabel(model.prediction)) +
       "</p><p><b>Model:</b> " + escapeHtml(model.model_name || "Not available") +
       "</p><p><b>SHA-256:</b><br><code>" + escapeHtml(asset.sha256) +
-      "</code></p><table>" + meta + "</table>" +
+      "</code></p><p><b>Evidence reference:</b> <code>" + escapeHtml(asset.asset_id || "Not assigned") + "</code></p>" +
+      "<h3>Observed findings</h3>" + ((asset.observations || []).length ? "<ul>" + asset.observations.map((item) => "<li><b>" + escapeHtml(item.title || item.code || "Observation") + ":</b> " + escapeHtml(item.detail || item.note || item.interpretation || "No detail supplied") + " <span class=muted>(" + escapeHtml(item.severity || "unclassified") + ")</span></li>").join("") + "</ul>" : "<p>No structured observations were returned for this evidence item.</p>") +
+      "<table>" + meta + "</table>" +
       (asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h3>Image forensic parameters</h3><pre>" + escapeHtml(JSON.stringify(asset.forensic_parameters, null, 2)) + "</pre>" : "") +
       (asset.provenance ? "<h3>Evidence provenance</h3><pre>" + escapeHtml(JSON.stringify(asset.provenance, null, 2)) + "</pre>" : "") +
       (asset.text_extraction ? "<h3>OCR / transcription</h3><pre>" + escapeHtml(JSON.stringify(asset.text_extraction, null, 2)) + "</pre>" : "") +
@@ -133,7 +135,7 @@ function exportPdf(report) {
     (report.investigator_reviews?.length ? "<h2>Investigator decisions</h2><table>" + report.investigator_reviews.map((item) => "<tr><th>" + escapeHtml(item.finding_id) + "</th><td>" + escapeHtml(item.status) + "</td><td>" + escapeHtml(item.comment || "No analyst note") + "</td><td>" + escapeHtml(item.updated_at || "") + "</td></tr>").join("") + "</table>" : "<h2>Investigator decisions</h2><p>No saved investigator decisions were available at export time.</p>") +
     (report.evidence_events?.length ? "<h2>Hash-linked evidence events</h2><pre>" + escapeHtml(JSON.stringify(report.evidence_events, null, 2)) + "</pre>" : "") +
     "<h2>Limitations and review notes</h2><ul>" + limitations + "</ul>" +
-    "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p>" +
+    "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p><div class='footer'>TRUTHLENS · Evidence references are tied to the case record and SHA-256 values shown above. Preserve original source media separately.</div>" +
     "<script>window.onload=function(){window.print()}<\/script></body></html>";
   const win = window.open("", "_blank");
   if (!win) return false;
