@@ -14,7 +14,7 @@ import {
   signInEmail, signInGoogle, signOutUser
 } from "./firebase";
 
-const API = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\\/+$/, "");
+const API = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const STORAGE_KEY = "truthlens.saved-investigations.v1";
 const MAX_FILES = 8;
 const MAX_BYTES = 40 * 1024 * 1024;
