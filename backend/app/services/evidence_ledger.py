@@ -87,6 +87,39 @@ def append_case_events(report_id: str, assets: list[dict[str, Any]], owner_uid: 
     return stored
 
 
+def append_case_event(
+    report_id: str,
+    event: dict[str, Any],
+    owner_uid: str,
+) -> dict[str, Any]:
+    """Append a human-review/correction event to the existing case hash chain."""
+    safe_event = {**event, "owner_uid": owner_uid}
+    timestamp = datetime.now(timezone.utc).isoformat()
+    payload = {**safe_event, "timestamp": timestamp}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    with _connect() as db:
+        row = db.execute(
+            "SELECT event_hash FROM evidence_events WHERE report_id=? ORDER BY id DESC LIMIT 1",
+            (report_id,),
+        ).fetchone()
+        if row is None:
+            raise LookupError("Case evidence ledger does not exist.")
+        previous = row["event_hash"]
+        digest = hashlib.sha256((previous + canonical).encode("utf-8")).hexdigest()
+        signature, key_id = _signature(digest)
+        db.execute(
+            "INSERT INTO evidence_events(report_id,event_type,event_time,payload_json,previous_hash,event_hash,signature,signature_key_id) VALUES(?,?,?,?,?,?,?,?)",
+            (report_id, str(event.get("event") or "case_event"), timestamp, canonical, previous, digest, signature, key_id),
+        )
+    return {
+        **payload,
+        "previous_event_hash": previous,
+        "event_hash": digest,
+        "signature": signature,
+        "signature_key_id": key_id,
+    }
+
+
 def get_case_events(report_id: str) -> list[dict[str, Any]]:
     with _connect() as db:
         rows = db.execute("SELECT payload_json,previous_hash,event_hash,signature,signature_key_id FROM evidence_events WHERE report_id=? ORDER BY id", (report_id,)).fetchall()

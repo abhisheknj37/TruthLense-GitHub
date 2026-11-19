@@ -55,3 +55,25 @@ def test_delete_case_events_removes_only_requested_case(tmp_path, monkeypatch):
     assert removed == 2
     assert evidence_ledger.verify_case_chain("case-one")["status"] == "not_found"
     assert evidence_ledger.verify_case_chain("case-two")["status"] == "valid"
+
+
+def test_append_human_review_event_extends_case_chain(tmp_path, monkeypatch):
+    monkeypatch.setattr(evidence_ledger, "DB_PATH", tmp_path / "human-events.sqlite3")
+    evidence_ledger.append_case_events("case-human", [], "analyst-1")
+    event = evidence_ledger.append_case_event(
+        "case-human",
+        {
+            "event": "investigator_finding_review",
+            "finding_id": "asset-1:MODEL_SIGNAL",
+            "review_status": "confirmed",
+            "review_comment_sha256": "a" * 64,
+        },
+        "analyst-1",
+    )
+    assert event["previous_event_hash"]
+    assert event["event_hash"]
+    events = evidence_ledger.get_case_events("case-human")
+    assert len(events) == 4
+    assert events[-1]["event"] == "investigator_finding_review"
+    assert events[-1]["review_comment_sha256"] == "a" * 64
+    assert evidence_ledger.verify_case_chain("case-human")["status"] == "valid"

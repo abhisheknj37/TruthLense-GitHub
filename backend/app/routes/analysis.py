@@ -39,7 +39,7 @@ from app.services.audio_review import audio_review_timeline
 from app.services.image_comparison import compare_images
 from app.services.text_analysis import analyze_text_context
 from app.services.claim_verification import verify_claims
-from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain, delete_case_events
+from app.services.evidence_ledger import append_case_events, append_case_event, get_case_events, verify_case_chain, delete_case_events
 from app.services.evidence_storage import store_original, resolve_original, delete_case_originals, purge_expired_originals
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
@@ -568,12 +568,26 @@ def put_ocr_correction(
     if len(corrected_text) > 12000:
         raise HTTPException(status_code=400, detail="Corrected text must be 12,000 characters or fewer.")
     try:
-        return save_ocr_correction(
+        correction = save_ocr_correction(
             user_uid=str(current_user["uid"]),
             report_id=report_id,
             asset_id=asset_id,
             corrected_text=corrected_text,
         )
+        custody_event = append_case_event(
+            report_id,
+            {
+                "event": "investigator_ocr_correction",
+                "detail": "An investigator saved a correction to extracted text.",
+                "asset_id": asset_id,
+                "reviewer_uid": str(current_user["uid"]),
+                "corrected_text_sha256": hashlib.sha256(corrected_text.strip().encode("utf-8")).hexdigest(),
+                "corrected_character_count": len(corrected_text.strip()),
+                "updated_at": correction["updated_at"],
+            },
+            str(current_user["uid"]),
+        )
+        return {**correction, "custody_event": custody_event}
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -608,9 +622,23 @@ def put_finding_review(
     status_value = str(payload.get("status", ""))
     comment = str(payload.get("comment", ""))
     try:
-        return save_finding_review(
+        saved_review = save_finding_review(
             str(current_user["uid"]), report_id, finding_id, status_value, comment
         )
+        custody_event = append_case_event(
+            report_id,
+            {
+                "event": "investigator_finding_review",
+                "detail": "An investigator saved a decision for a technical finding.",
+                "finding_id": finding_id,
+                "review_status": status_value,
+                "reviewer_uid": str(current_user["uid"]),
+                "review_comment_sha256": hashlib.sha256(comment.strip().encode("utf-8")).hexdigest(),
+                "updated_at": saved_review["updated_at"],
+            },
+            str(current_user["uid"]),
+        )
+        return {**saved_review, "custody_event": custody_event}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
