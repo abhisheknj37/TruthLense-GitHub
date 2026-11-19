@@ -21,3 +21,6 @@ reports/
 
 # Firebase Admin service-account credentials
 backend/firebase-service-account*.json
+
+# Local SQLite database and persisted heatmap images
+backend/data/
