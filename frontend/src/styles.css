@@ -229,3 +229,21 @@ body{background:radial-gradient(ellipse at 80% 5%,#07506433 0,transparent 35%),r
 .intake-divider{display:flex;align-items:center;gap:12px;margin:18px 0;color:#71899b;font:8px 'DM Mono';letter-spacing:1px}
 .intake-divider:before,.intake-divider:after{content:"";height:1px;flex:1;background:#203647}
 @media(max-width:760px){.capture-workspace{grid-template-columns:1fr}.capture-controls{display:grid;grid-template-columns:1fr 1fr}.capture-preview{min-height:190px}.live-capture-heading{flex-direction:column}.capture-tabs button{flex:1;justify-content:center}}
+
+
+/* Advanced forensic report panels */
+.forensic-parameters{margin:15px 0;padding:14px;border:1px solid #294254;border-radius:10px;background:#0c1723}
+.forensic-parameter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:11px}
+.forensic-parameter{min-width:0;padding:10px;border:1px solid #24394b;border-radius:8px;background:#101e2c}
+.forensic-parameter small,.forensic-parameter span{display:block;color:#8297aa;font-size:9px;line-height:1.45}
+.forensic-parameter b{display:block;margin:8px 0 5px;color:#e6f3f5;font:700 17px 'DM Mono'}
+@media(max-width:850px){.forensic-parameter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cam-caption{padding:8px 9px;border-left:2px solid #38bfc0;background:#10232d;border-radius:0 6px 6px 0;color:#a8c0cb;font-size:8px;line-height:1.65}
+.text-review-panel,.provenance-note{background:rgba(15,31,48,.55);border:1px solid rgba(105,146,170,.22);border-radius:14px;padding:18px;margin:18px 0}
+.text-review-panel h3{margin:6px 0 14px}
+.provenance-note{display:grid;gap:6px}
+.provenance-note b{font-size:10px;letter-spacing:1.2px;color:#79d8d0}
+.provenance-note span{font-size:12px}
+.provenance-note small{color:#8fa5b8;font-size:11px;line-height:1.55}
+.provenance-note p{font-size:11px;line-height:1.55;color:#b7c8d5;overflow-wrap:anywhere}
+.extracted-text{white-space:pre-wrap;max-height:180px;overflow:auto;padding:10px;background:#08121d;border-radius:8px}
