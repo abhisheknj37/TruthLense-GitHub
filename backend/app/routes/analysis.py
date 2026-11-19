@@ -19,6 +19,7 @@ from app.detectors.video import VideoDeepfakeAnalyzer
 from app.schemas import AssetResult, CaseReport, Observation
 from app.services.activity import (
     get_user_heatmap_path,
+    delete_user_report,
     get_user_report,
     list_user_activity,
     save_report_and_activity,
@@ -250,6 +251,17 @@ def saved_report(
     if report is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
     return report
+
+
+@router.delete("/reports/{report_id}")
+def delete_saved_report(
+    report_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete a saved case and its heatmap artifacts for its owner."""
+    if not delete_user_report(current_user["uid"], report_id):
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    return {"deleted": True, "report_id": report_id}
 
 
 @router.get("/reports/{report_id}/heatmap")
