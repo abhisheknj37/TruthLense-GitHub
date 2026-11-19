@@ -1278,7 +1278,7 @@ export default function App() {
             <div className="notice"><AlertTriangle size={16} /><span>Some files may be inconclusive when there is no detectable face, insufficient speech, decoding errors or unsupported model scope.</span></div>
           </aside>
         </div>
-        {activeReport && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={() => {
+        {activeReport && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={async () => {
           try {
             const token = await user.getIdToken();
             const response = await axios.get(API + "/api/reports/" + encodeURIComponent(activeReport.report_id) + "/reviews", {
@@ -1296,7 +1296,7 @@ export default function App() {
         <div className="page-heading"><div><span className="section-kicker">{page === "history" ? "WORKSPACE / CASE REGISTER" : "WORKSPACE / REPORT LIBRARY"}</span>
           <h1>{page === "history" ? "Case history" : "Reports"}</h1><p>{page === "history" ? "Reopen saved investigations and continue reviewing the evidence." : "Open completed case reports or export an evidence summary."}</p></div>
           <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> New investigation</button></div>
-        {activeReport && page === "reports" && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={() => {
+        {activeReport && page === "reports" && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={async () => {
           try {
             const token = await user.getIdToken();
             const response = await axios.get(API + "/api/reports/" + encodeURIComponent(activeReport.report_id) + "/reviews", {
