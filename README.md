@@ -11,7 +11,7 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 - **Dashboard:** workspace overview, saved-case metrics, recent investigations and the four-stage review workflow.
 - **New investigation:** live camera photo capture, camera video recording, microphone audio recording, drag-and-drop evidence intake, image thumbnails, video previews, audio playback cards, per-file validation, removal and total upload-size summary.
 - **Analysis pipeline:** media inspection, modality analysis, evidence correlation, then human review and reporting. Browser upload progress is shown; the API does not currently stream model-stage progress.
-- **Reports:** image face regions and optional Grad-CAM-style patch attribution, sampled video-frame timeline, audio speech-window scores, metadata, SHA-256 fingerprint and cross-modal comparison.
+- **Reports:** image face regions and optional Grad-CAM-style patch attribution, descriptive image-quality parameters, temporal video review cues, optional face-consistency and lip-sync integrations, optional OCR/transcription, provenance status, text triage, metadata, SHA-256 fingerprints and a local hash-linked evidence event history.
 - **Case history:** reopen server-persisted investigations, search saved cases, and delete reports and their attribution artifacts for the signed-in account.
 - **Exports:** JSON download and print-friendly report that can be saved as PDF from the browser print dialog.
 - **Settings:** local workspace label and API health check.
@@ -32,7 +32,7 @@ Completed reports, activity events, evidence metadata, SHA-256 verification resu
 - **Image:** face crops → DeiTFake ViT image classifier → per-face score, heuristic uncertainty band and Grad-CAM-style patch attribution.
 - **Video:** up to eight evenly spaced frames → same face-image classifier → timestamped frame results and clip-level median over face-bearing frames.
 - **Audio:** 16 kHz mono speech windows → Wav2Vec2 classifier → segment scores and median summary.
-- **Cross-modal:** optional comparison of separate audio/video model signals only when the user confirms they belong to the same recording.
+- **Cross-modal:** compare independent audio/video model signals only when the user confirms they belong to the same recording; optional activity-envelope alignment and SyncNet are separate synchronization review signals, not authenticity probabilities.
 - **Evidence:** server-computed SHA-256 fingerprint compared with a browser pre-upload digest, media metadata and structured JSON report. A matching digest verifies transfer integrity only.
 
 ## Selected pretrained models
@@ -87,11 +87,32 @@ Document uploads such as PDF, DOCX and XLSX are not supported by the current ana
 ## Safety and limitations
 
 - Image model is face-crop focused; a no-face image returns inconclusive.
-- Video is sampled frame classification, not temporal forensics or lip-sync analysis.
+- Video frame classification is sampled. Temporal optical-flow/scene-change indicators are heuristic review cues, not a trained temporal classifier. Actual lip-sync inference requires optional configured SyncNet weights.
 - Audio results may not generalize beyond the model's limited training scope.
 - Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities.
-- Cross-modal agreement is not proof of authenticity or synchronization.
+- Cross-modal agreement is not proof of authenticity. Coarse activity alignment is not phoneme-to-viseme verification; SyncNet requires optional model weights and careful review.
 - The backend database and heatmap directory are persistent local server storage; production deployments should use backed-up durable storage and strict filesystem permissions.
 - Uploaded files are never executed. Public deployment requires isolated processing, authentication, rate limits and stronger security controls.
 
 See `docs/ARCHITECTURE.md`, `docs/EVALUATION.md` and `docs/DEMO_CHECKLIST.md`.
+
+
+## Advanced forensic modules
+
+The branch also includes heuristic temporal video review (optical flow and scene-change timestamps), optional within-video face-embedding consistency, optional SyncNet synchronization review, optional C2PA manifest inspection, OCR, ASR transcription, text-context triage, OpenAlex scholarly candidate discovery, and a local hash-linked evidence event ledger. These modules are dependency- or model-weight-gated; unavailable features report an explicit status rather than fabricated outputs.
+
+Install optional Python packages with:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pip install -r requirements-forensics.txt
+```
+
+Tesseract OCR and FFmpeg also require system executables. Optional configuration includes `TRUTHLENS_TEMPORAL_MODEL`, `TRUTHLENS_FACE_MODEL`, `TRUTHLENS_SYNCNET_WEIGHTS`, and `TRUTHLENS_ASR_MODEL`. See [docs/ADVANCED_FORENSICS.md](docs/ADVANCED_FORENSICS.md) for setup, API routes, evaluation utilities and limitations.
+
+The new evidence-ledger API endpoints are authenticated and user-scoped:
+- `GET /api/cases/{report_id}/chain-of-custody`
+- `GET /api/cases/{report_id}/chain-of-custody/verify`
+- `POST /api/claims/verify` with `{"text":"..." }`
+
+The local hash chain detects changes within the stored event sequence but is not independently timestamped or externally anchored. Claim research returns related scholarly candidates for human review and does not issue true/false verdicts.
