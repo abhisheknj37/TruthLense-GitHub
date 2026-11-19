@@ -172,7 +172,9 @@ function exportPdf(report) {
     const extras = [
       asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h4>Image forensic measurements</h4>" + objectTable(asset.forensic_parameters) : "",
       Object.keys(provenance).length ? "<h4>Evidence provenance</h4>" + objectTable(provenance) : "",
-      asset.text_extraction ? "<h4>OCR / transcription status</h4>" + objectTable(asset.text_extraction) : "",
+      asset.text_extraction ? "<h4>OCR / transcription status</h4>" + objectTable({ ...asset.text_extraction, investigator_correction: undefined }) : "",
+      asset.text_extraction?.engine_comparison ? "<h4>Independent OCR engine comparison</h4>" + objectTable(asset.text_extraction.engine_comparison) : "",
+      asset.text_extraction?.investigator_correction?.text ? "<div class='human-correction'><h4>INVESTIGATOR-CORRECTED OCR TEXT · HUMAN-EDITED</h4><p class='muted'>This text was manually corrected by an investigator. It is separate from machine OCR and has not been independently verified.</p><pre>" + esc(asset.text_extraction.investigator_correction.text) + "</pre><p class='muted'>Saved: " + humanDate(asset.text_extraction.investigator_correction.updated_at) + "</p></div>" : "",
       asset.model_assessment?.audio_review_timeline ? "<h4>Audio review timeline</h4>" + objectTable(asset.model_assessment.audio_review_timeline) : "",
       asset.video_analysis?.temporal_forensics ? "<h4>Temporal video review</h4>" + objectTable(asset.video_analysis.temporal_forensics) : "",
       asset.video_analysis?.face_identity_consistency ? "<h4>Face consistency review</h4>" + objectTable(asset.video_analysis.face_identity_consistency) : ""
@@ -227,7 +229,7 @@ function exportPdf(report) {
     ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}.data-table.compact th,.data-table.compact td{padding:4px 6px;font-size:8pt}.data-table.compact th{width:auto}.nested-list{margin:3px 0;padding-left:18px}.nested-list li{margin:3px 0}" +
     "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
     ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
-    ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
+    ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.human-correction{border:1px solid #9aaec3;background:#f4f7fa;border-radius:6px;padding:12px;margin:12px 0;break-inside:avoid}.human-correction h4{margin-top:0}.human-correction pre{white-space:pre-wrap;overflow-wrap:anywhere}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
     ".page-section{break-inside:auto}thead{display:table-header-group}tr{break-inside:avoid}@media print{a{color:inherit;text-decoration:none}.asset{break-inside:auto}}" +
     "</style></head><body>" +
     "<header class='cover'><div class='brand'>TRUTHLENS / DIGITAL FORENSICS</div><h1>Forensic Case Report</h1>" +
