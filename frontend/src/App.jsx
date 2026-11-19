@@ -96,6 +96,14 @@ function downloadJson(report) {
   link.click();
   URL.revokeObjectURL(url);
 }
+function getAssessmentStatusLabel(status) {
+  const labels = {
+    model_indicators_available_human_review_required: "Model indicators available",
+    inconclusive: "Inconclusive",
+  };
+  return labels[status] || String(status || "Not available").replaceAll("_", " ");
+}
+
 function getInvestigatorReviewProgress(report) {
   const findings = (report.assets || []).flatMap((asset) => {
     const observations = asset.observations?.length ? asset.observations : [{ code: "MODEL_ASSESSMENT" }];
@@ -136,7 +144,7 @@ function exportPdf(report) {
     "th{text-transform:capitalize;width:35%}li{margin:7px 0}@media print{button{display:none}}</style></head><body>" +
     "<h1>TruthLens · Forensic case report</h1><p class='muted'>Case " + escapeHtml(report.report_id) +
     " · " + escapeHtml(formatDate(report.created_at)) + "</p><h2>Case summary</h2><p>" +
-    escapeHtml(report.summary) + "</p><p><b>Automated assessment:</b> " + escapeHtml(report.overall_status) +
+    escapeHtml(report.summary) + "</p><p><b>Automated assessment:</b> " + escapeHtml(getAssessmentStatusLabel(report.overall_status)) +
     " · <b>Human oversight:</b> " + (report.human_review_required ? "Required" : "Not specified") +
     " · <b>Investigator review:</b> " + reviewProgress.reviewed + "/" + reviewProgress.total + " findings reviewed (" + (reviewProgress.complete ? "Complete" : "Pending") + ")" +
     "</p><h2>Evidence inventory and findings</h2>" + rows +
