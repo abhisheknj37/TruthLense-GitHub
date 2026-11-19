@@ -752,7 +752,7 @@ export default function App() {
       <nav className="nav-list">{nav.map(([id, label, icon]) =>
         <button key={id} className={"nav-item " + (page === id ? "active" : "")} onClick={() => { setPage(id); setNotice(""); }}>
           {icon}<span>{label}</span>
-          {id === "history" && savedReports.length > 0 && <em>{savedReports.length}</em>}
+          {id === "history" && activityEvents.length > 0 && <em>{activityEvents.length}</em>}
         </button>)}</nav>
       <div className="sidebar-bottom">
         <div className="profile-avatar">{(user.displayName || user.email || "FA").slice(0, 2).toUpperCase()}</div><div className="profile-copy"><b>{user.displayName || "Forensic analyst"}</b><small>{user.email || "Signed in"}</small></div>
@@ -934,9 +934,10 @@ export default function App() {
             <button className="button button-primary" onClick={checkApi}><Activity size={16} /> Test API connection</button>
             <div className={"connection-state " + apiStatus}><i /> {apiStatus === "online" ? "Backend reachable" : apiStatus === "offline" ? "Backend unreachable" : apiStatus === "checking" ? "Checking connection…" : "Connection not checked"}</div>
             {apiMessage && <p className="settings-help">{apiMessage}</p>}</div>
-          <div className="content-panel settings-card"><span className="section-kicker">DATA & PRIVACY</span><h2>Local report storage</h2>
-            <p>Saved investigation reports are kept in this browser's local storage. Uploaded media previews are temporary and are not added to case history. The backend processes uploaded files and removes its temporary working copies.</p>
-            <div className="settings-metric"><b>{savedReports.length}</b><span>Saved reports in this browser</span></div></div>
+          <div className="content-panel settings-card"><span className="section-kicker">DATA & PRIVACY</span><h2>Server-side case storage</h2>
+            <p>Completed reports and real model-attribution PNGs are saved by the TruthLens backend and scoped to your verified Firebase account. The dashboard refreshes its activity feed every 8 seconds. Original uploaded media is processed from temporary files and is not retained as a case attachment.</p>
+            <div className="settings-metric"><b>{activityEvents.length}</b><span>Reports stored by the API for this account</span></div>
+            <p className="settings-help">Backend storage: backend/data/truthlens.sqlite3 and backend/data/heatmaps/. Protect and back up this directory in deployment.</p></div>
           <div className="content-panel settings-card"><span className="section-kicker">MODEL TRANSPARENCY</span><h2>Review before concluding</h2>
             <p>Model scores are not calibrated probabilities. Video uses sampled frame classification, audio is scoped to the selected speech model and cross-modal review compares separate model signals only.</p>
             <div className="safety-note"><Shield size={15} /> TruthLens supports investigation; it does not certify authenticity.</div></div>
