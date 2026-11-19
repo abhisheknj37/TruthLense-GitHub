@@ -44,13 +44,14 @@ The model cards report their own evaluation metrics. Those numbers are not Truth
 
 ## Run on Windows PowerShell
 
-First clone or update the advanced project branch:
+Clone the current public repository:
 
 ```powershell
-git clone --branch feature/truthlens-advanced-mvp https://github.com/abhisheknj37/TruthLense.git
-# or, inside an existing clone:
-git switch feature/truthlens-advanced-mvp
-git pull origin feature/truthlens-advanced-mvp
+git clone https://github.com/abhisheknj37/TruthLense-GitHub.git
+cd TruthLense-GitHub
+# To update an existing clone:
+git switch main
+git pull --ff-only origin main
 ```
 
 Backend terminal:
