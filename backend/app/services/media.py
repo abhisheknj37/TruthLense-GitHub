@@ -30,6 +30,39 @@ def media_type_for(path: Path) -> str:
     raise MediaError(f"Unsupported file extension: {ext or 'unknown'}")
 
 
+def image_forensic_parameters(path: Path) -> dict[str, Any]:
+    """Descriptive image-quality measurements; not validated manipulation detectors."""
+    with Image.open(path) as source:
+        rgb = np.asarray(source.convert("RGB"), dtype=np.uint8)
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    gray_f = gray.astype(np.float32)
+    h, w = gray.shape
+    cells = [float(gray_f[round(r*h/4):round((r+1)*h/4), round(c*w/4):round((c+1)*w/4)].mean())
+             for r in range(4) for c in range(4)
+             if round((r+1)*h/4) > round(r*h/4) and round((c+1)*w/4) > round(c*w/4)]
+    illumination_std = float(np.std(cells)) if cells else 0.0
+    texture_detail = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    residual = gray_f - cv2.GaussianBlur(gray_f, (3, 3), 0)
+    noise_sigma = 1.4826 * float(np.median(np.abs(residual - np.median(residual))))
+    gx, gy = np.abs(np.diff(gray_f, axis=1)), np.abs(np.diff(gray_f, axis=0))
+    block_edges, other_edges = [], []
+    if gx.size:
+        mask = np.zeros(gx.shape[1], dtype=bool); mask[np.arange(7, gx.shape[1], 8)] = True
+        block_edges.extend(gx[:, mask].ravel().tolist()); other_edges.extend(gx[:, ~mask].ravel().tolist())
+    if gy.size:
+        mask = np.zeros(gy.shape[0], dtype=bool); mask[np.arange(7, gy.shape[0], 8)] = True
+        block_edges.extend(gy[mask, :].ravel().tolist()); other_edges.extend(gy[~mask, :].ravel().tolist())
+    ratio = float(np.mean(block_edges)) / max(float(np.mean(other_edges)), 1e-6) if other_edges else 0.0
+    return {
+        "method": "classical_image_quality_indicators_v1",
+        "interpretation": "Descriptive measurements only; none independently proves manipulation or authenticity.",
+        "lighting": {"status": "measured", "grid_mean_intensity_std": round(illumination_std, 4), "note": "Brightness variation across a 4x4 grid; natural lighting also varies."},
+        "texture": {"status": "measured", "laplacian_variance": round(texture_detail, 4), "note": "Focus/detail indicator, not a deepfake score."},
+        "noise": {"status": "measured", "robust_high_frequency_sigma": round(noise_sigma, 4), "note": "High-frequency residual estimate; resizing and denoising affect it."},
+        "compression": {"status": "heuristic", "eight_pixel_boundary_gradient_ratio": round(ratio, 4), "note": "Block-boundary heuristic, not a validated JPEG tampering detector."},
+    }
+
+
 def inspect_image(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     try:
         with Image.open(path) as image:
@@ -169,14 +202,18 @@ def inspect_media(path: Path) -> dict[str, Any]:
     if media_type == "image":
         metadata, observations = inspect_image(path)
         samples = []
+        forensic_parameters = image_forensic_parameters(path)
     elif media_type == "video":
         metadata, observations, samples = inspect_video(path)
+        forensic_parameters = {}
     else:
         metadata, observations = inspect_audio(path)
         samples = []
+        forensic_parameters = {}
     return {
         "media_type": media_type,
         "metadata": metadata,
         "observations": observations,
         "sampled_frames": samples,
+        "forensic_parameters": forensic_parameters,
     }
