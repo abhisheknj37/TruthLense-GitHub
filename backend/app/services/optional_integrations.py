@@ -117,6 +117,14 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         except Exception as exc:
             language_status = "engine_error"
             ocr_missing.append(f"Tesseract check failed: {type(exc).__name__}")
+    rapidocr_installed = _module_available("rapidocr_onnxruntime")
+    result["ocr_second_engine"] = {
+        "status": "ready_to_attempt" if rapidocr_installed else "optional_dependency_missing",
+        "engine": "RapidOCR",
+        "missing": [] if rapidocr_installed else ["rapidocr-onnxruntime"],
+        "note": "Independent OCR comparison is available when installed; agreement is not ground truth.",
+    }
+
     result["ocr"] = {
         "status": "ready_to_attempt" if not ocr_missing and language_status == "available" else "needs_setup",
         "missing": ocr_missing,
