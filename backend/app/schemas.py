@@ -24,6 +24,9 @@ class AssetResult(BaseModel):
     video_analysis: dict[str, Any] = Field(default_factory=dict)
     sampled_frames: list[dict[str, Any]] = Field(default_factory=list)
     integrity_verification: dict[str, Any] = Field(default_factory=dict)
+    forensic_parameters: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    text_extraction: dict[str, Any] = Field(default_factory=dict)
 
 
 class CaseReport(BaseModel):
@@ -32,7 +35,9 @@ class CaseReport(BaseModel):
     overall_status: str
     summary: str
     assets: list[AssetResult]
-    cross_modal_review: list[dict[str, str]] = Field(default_factory=list)
+    cross_modal_review: list[dict[str, Any]] = Field(default_factory=list)
+    text_analysis: dict[str, Any] = Field(default_factory=dict)
+    evidence_events: list[dict[str, Any]] = Field(default_factory=list)
     limitations: list[str]
     human_review_required: bool = True
     case_title: str | None = None
