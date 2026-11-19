@@ -128,6 +128,50 @@ function exportPdf(report) {
   const tableRows = (items) => Object.entries(items || {}).filter(([, value]) =>
     ["string", "number", "boolean"].includes(typeof value) || value === null
   ).map(([key, value]) => "<tr><th>" + esc(titleCase(key)) + "</th><td>" + esc(safeValue(key, value)) + "</td></tr>").join("");
+  const renderOcr = (data) => {
+    if (!data || typeof data !== "object") return "";
+    const frames = Array.isArray(data.frames) ? data.frames : [];
+    const rows = frames.length ? frames.map((frame) => {
+      const confidence = frame.mean_word_confidence ?? frame.confidence;
+      const level = frame.confidence_level || (Number.isFinite(Number(confidence)) ? Number(confidence) < 45 ? "low" : "reported" : "not reported");
+      return "<tr><td>" + esc(safeValue("timestamp", frame.timestamp_seconds)) + "</td><td>" +
+        esc(safeValue("frame", frame.frame_index)) + "</td><td class='ocr-text'>" + esc(frame.text || "No text recognized") +
+        "</td><td>" + esc(frame.engine || data.engine || "Not recorded") + "</td><td>" +
+        esc(confidence == null ? "Not reported" : String(confidence) + (frame.confidence_level ? " · " + frame.confidence_level : "")) +
+        "</td><td>" + (frame.analysis_eligible ? "Eligible" : "Not eligible") + "</td></tr>";
+    }).join("") : data.text ? "<tr><td>—</td><td>—</td><td class='ocr-text'>" + esc(data.text) +
+      "</td><td>" + esc(data.engine || "Not recorded") + "</td><td>" +
+      esc(data.mean_word_confidence == null ? "Not reported" : String(data.mean_word_confidence) + " · " + (data.confidence_level || "recognition estimate")) +
+      "</td><td>" + (data.analysis_eligible ? "Eligible" : "Not eligible") + "</td></tr>" : "";
+    const comparison = data.engine_comparison && Object.keys(data.engine_comparison).length
+      ? "<h4>Independent OCR engine comparison</h4>" + objectTable(data.engine_comparison) : "";
+    const correction = data.investigator_correction?.text
+      ? "<div class='human-correction'><h4>INVESTIGATOR-CORRECTED TEXT · HUMAN-EDITED</h4><p class='muted'>Separate from machine OCR; not independently verified.</p><pre>" +
+        esc(data.investigator_correction.text) + "</pre><p class='muted'>Reviewer: " +
+        esc(data.investigator_correction.reviewer_uid || "Not recorded") + " · Saved: " +
+        humanDate(data.investigator_correction.updated_at) + "</p></div>" : "";
+    const summary = "<p class='muted'>Machine OCR · " + esc(data.engine || "Engine not recorded") +
+      " · " + esc(data.languages || "Language not recorded") + " · " + frames.length + " sampled frame(s). " +
+      "Confidence is a recognition estimate, not an authenticity probability.</p>";
+    const table = rows ? "<table class='data-table compact ocr-table'><thead><tr><th>Time (s)</th><th>Frame</th><th>Extracted text</th><th>Engine</th><th>Confidence</th><th>Analysis</th></tr></thead><tbody>" +
+      rows + "</tbody></table>" : "<p class='empty'>No machine-readable OCR or transcription text was recorded.</p>";
+    const low = frames.filter((frame) => !frame.analysis_eligible || frame.confidence_level === "low").length;
+    const quality = low ? "<p class='ocr-warning'>" + low + " sampled frame(s) did not pass the analysis quality gate or were marked low confidence. Verify text against the original evidence.</p>" : "";
+    return "<h4>OCR / transcription review</h4>" + summary + quality + table + comparison + correction;
+  };
+  const renderTemporal = (data) => {
+    if (!data || typeof data !== "object") return "";
+    const samples = Array.isArray(data.samples) ? data.samples : [];
+    const model = data.trained_model_assessment || data.model_assessment || {};
+    const metrics = ["decoded_frame_count", "sampled_frames", "sampled_transitions", "scene_change_timestamps_seconds", "motion_discontinuity_timestamps_seconds", "motion_summary"];
+    const summary = {};
+    metrics.forEach((key) => { if (data[key] !== undefined) summary[key] = data[key]; });
+    if (model.status) summary.temporal_model_status = model.status;
+    if (model.note) summary.temporal_model_note = model.note;
+    return "<h4>Temporal video review · heuristic cues</h4><p class='muted'>Optical flow and histogram changes describe sampled motion; they are not a trained deepfake verdict.</p>" +
+      objectTable(summary) + (samples.length ? compactTemporalSamples(samples) : "") +
+      "<p class='muted'>Validated temporal classifier: " + esc(model.status === "model_configured" ? "Configured (validation still required)" : "Not configured / not demonstrated") + ".</p>";
+  };
   const renderNested = (value) => {
     if (Array.isArray(value)) {
       if (!value.length) return "<span class='empty'>None recorded</span>";
@@ -172,11 +216,9 @@ function exportPdf(report) {
     const extras = [
       asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h4>Image forensic measurements</h4>" + objectTable(asset.forensic_parameters) : "",
       Object.keys(provenance).length ? "<h4>Evidence provenance</h4>" + objectTable(provenance) : "",
-      asset.text_extraction ? "<h4>OCR / transcription status</h4>" + objectTable({ ...asset.text_extraction, investigator_correction: undefined }) : "",
-      asset.text_extraction?.engine_comparison ? "<h4>Independent OCR engine comparison</h4>" + objectTable(asset.text_extraction.engine_comparison) : "",
-      asset.text_extraction?.investigator_correction?.text ? "<div class='human-correction'><h4>INVESTIGATOR-CORRECTED OCR TEXT · HUMAN-EDITED</h4><p class='muted'>This text was manually corrected by an investigator. It is separate from machine OCR and has not been independently verified.</p><pre>" + esc(asset.text_extraction.investigator_correction.text) + "</pre><p class='muted'>Saved: " + humanDate(asset.text_extraction.investigator_correction.updated_at) + "</p></div>" : "",
+      asset.text_extraction ? renderOcr(asset.text_extraction) : "",
       asset.model_assessment?.audio_review_timeline ? "<h4>Audio review timeline</h4>" + objectTable(asset.model_assessment.audio_review_timeline) : "",
-      asset.video_analysis?.temporal_forensics ? "<h4>Temporal video review</h4>" + objectTable(asset.video_analysis.temporal_forensics) : "",
+      asset.video_analysis?.temporal_forensics ? renderTemporal(asset.video_analysis.temporal_forensics) : "",
       asset.video_analysis?.face_identity_consistency ? "<h4>Face consistency review</h4>" + objectTable(asset.video_analysis.face_identity_consistency) : ""
     ].join("");
     return "<section class='asset page-section'><div class='asset-title'><span class='eyebrow'>EVIDENCE ITEM " + String(index + 1).padStart(2, "0") +
@@ -197,11 +239,17 @@ function exportPdf(report) {
       esc(item.detail || item.note || item.interpretation || "No explanatory detail supplied.") + "</p></div>"
     ).join("") + "</div>"
     : "<p class='empty'>No cross-modal comparisons were available for this case.</p>";
+  const findingTitles = new Map((report.assets || []).flatMap((asset) =>
+    (asset.observations || []).map((finding, index) => [
+      asset.asset_id + ":" + String(finding.code || index),
+      (finding.title || finding.code || "Technical finding") + " · " + (asset.filename || "Evidence")
+    ])
+  ));
   const reviews = (report.investigator_reviews || []).length
-    ? "<table class='data-table'><thead><tr><th>Finding reference</th><th>Decision</th><th>Analyst rationale</th><th>Last updated</th></tr></thead><tbody>" +
-      report.investigator_reviews.map((item) => "<tr><td><code>" + esc(item.finding_id) + "</code></td><td><span class='tag " +
-      esc(item.status) + "'>" + esc(titleCase(item.status)) + "</span></td><td>" + esc(item.comment || "No analyst note recorded") +
-      "</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
+    ? "<p class='section-intro'>A decision confirms or rejects only the named technical finding. It does not establish media authenticity.</p><table class='data-table'><thead><tr><th>Finding</th><th>Decision</th><th>Analyst rationale</th><th>Reviewer</th><th>Updated</th></tr></thead><tbody>" +
+      report.investigator_reviews.map((item) => "<tr><td>" + esc(findingTitles.get(item.finding_id) || item.finding_id || "Unmatched finding") + "<br><code>" + esc(item.finding_id || "") + "</code></td><td><span class='tag " +
+      esc(item.status) + "'>" + esc(titleCase(item.status)) + "</span></td><td>" + esc(item.comment || "No analyst rationale recorded") +
+      "</td><td>" + esc(item.reviewer_uid || item.user_uid || "Not recorded") + "</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
     : "<p class='empty'>No saved investigator decisions were available at export time.</p>";
   const events = (report.evidence_events || []).length
     ? "<table class='data-table'><thead><tr><th>Event</th><th>Details</th><th>Timestamp</th><th>Event hash</th></tr></thead><tbody>" +
@@ -212,6 +260,12 @@ function exportPdf(report) {
     : "<p class='empty'>No evidence events were recorded.</p>";
   const limitations = (report.limitations || []).map((item) => "<li>" + esc(item) + "</li>").join("");
   const summaryStatus = getAssessmentStatusLabel(report.overall_status);
+  const allowedConclusions = ["authenticity_supported", "manipulation_indicators_identified", "inconclusive", "insufficient_evidence"];
+  const caseConclusion = allowedConclusions.includes(report.case_conclusion)
+    ? titleCase(report.case_conclusion) : "Inconclusive";
+  const conclusionNote = report.case_conclusion
+    ? "Case conclusion supplied separately from technical finding reviews."
+    : "No explicit investigator case conclusion was recorded. Model outputs and confirmed technical findings do not establish authenticity.";
   const html = "<!doctype html><html><head><meta charset='utf-8'><title>TruthLens Forensic Case Report</title><style>" +
     "@page{size:A4;margin:17mm 15mm}*{box-sizing:border-box}body{font:10pt/1.55 Arial,sans-serif;color:#17243a;margin:0;background:#fff}" +
     ".cover{border-bottom:4px solid #173b66;padding:0 0 18px;margin-bottom:22px}.brand{font-size:10pt;font-weight:700;letter-spacing:2px;color:#245b91}" +
@@ -230,16 +284,16 @@ function exportPdf(report) {
     "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
     ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
     ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.human-correction{border:1px solid #9aaec3;background:#f4f7fa;border-radius:6px;padding:12px;margin:12px 0;break-inside:avoid}.human-correction h4{margin-top:0}.human-correction pre{white-space:pre-wrap;overflow-wrap:anywhere}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
-    ".page-section{break-inside:auto}thead{display:table-header-group}tr{break-inside:avoid}@media print{a{color:inherit;text-decoration:none}.asset{break-inside:auto}}" +
+    ".page-section{break-inside:auto}thead{display:table-header-group}tr,.finding,.review-row,.human-correction{break-inside:avoid}.ocr-table{font-size:7.5pt}.ocr-table th{width:auto}.ocr-table td{font-size:7.5pt}.ocr-text{white-space:pre-wrap;max-width:220px}.ocr-warning{background:#fff4df;border-left:3px solid #b7791f;padding:8px 10px;color:#704b12}.asset{padding:12px;margin:8px 0 12px}h2{margin:18px 0 8px}h4{margin:12px 0 5px}.data-table th,.data-table td{padding:5px 6px}@media print{a{color:inherit;text-decoration:none}.asset{break-inside:auto}}" +
     "</style></head><body>" +
     "<header class='cover'><div class='brand'>TRUTHLENS / DIGITAL FORENSICS</div><h1>Forensic Case Report</h1>" +
     "<div class='case-meta'>Case reference: " + esc(report.report_id) + "<br>Generated: " + humanDate(new Date().toISOString()) +
     " · Investigation date: " + humanDate(report.created_at) + "</div></header>" +
     "<h2>01 · Executive case summary</h2><div class='summary'><b>Case assessment</b><p>" + esc(report.summary || "No case summary supplied.") +
-    "</p></div><div class='status-grid'><div class='status'><span class='eyebrow'>AUTOMATED ASSESSMENT</span><b>" + esc(summaryStatus) +
+    "</p><b>Overall case conclusion · " + esc(caseConclusion) + "</b><p>" + esc(conclusionNote) + "</p></div><div class='status-grid'><div class='status'><span class='eyebrow'>AUTOMATED ASSESSMENT</span><b>" + esc(summaryStatus) +
     "</b></div><div class='status'><span class='eyebrow'>HUMAN OVERSIGHT</span><b>" +
-    (report.human_review_required ? "Required" : "Not specified") + "</b></div><div class='status'><span class='eyebrow'>INVESTIGATOR REVIEW</span><b>" +
-    reviewProgress.reviewed + " / " + reviewProgress.total + " reviewed · " + (reviewProgress.complete ? "Complete" : "Pending") + "</b></div></div>" +
+    (report.human_review_required ? "Required" : "Not specified") + "</b></div><div class='status'><span class='eyebrow'>FINDINGS REVIEWED</span><b>" +
+    reviewProgress.reviewed + " / " + reviewProgress.total + " · " + (reviewProgress.complete ? "All findings reviewed" : "Review pending") + "</b></div></div>" +
     "<h2>02 · Evidence inventory and technical findings</h2><p class='section-intro'>Each evidence item is identified by its case reference and received-file SHA-256 digest.</p>" +
     (assets || "<p class='empty'>No evidence items were recorded.</p>") +
     "<h2>03 · Cross-modal and contextual review</h2>" + cross +
