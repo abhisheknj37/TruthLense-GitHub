@@ -132,3 +132,32 @@ def test_runtime_calibration_requires_exact_model_and_pipeline_and_approval(tmp_
     assert calibration["status"] == "approved"
     assert apply_approved_calibration(0.5, calibration) == 0.2
     assert apply_approved_calibration(0.25, calibration) == 0.1
+
+
+def test_calibration_directory_selects_exact_model_and_pipeline(tmp_path, monkeypatch):
+    import json
+    from app.services.calibration_registry import load_approved_calibration
+
+    directory = tmp_path / "calibration"
+    directory.mkdir()
+    base = {
+        "approval_status": "approved",
+        "deployment_approved": True,
+        "approved_by": "reviewer",
+        "approved_at": "2026-11-20T00:00:00+00:00",
+        "dataset": {"n_held_out": 30, "n_groups_held_out": 8, "sha256": "a" * 64, "group_column": "group_id"},
+        "metrics": {"calibrated_held_out": {"brier_score": 0.1}},
+        "calibration_mapping": {"x_thresholds": [0.0, 0.5, 1.0], "y_thresholds": [0.0, 0.2, 0.9]},
+    }
+    for name, model_id, pipeline in (
+        ("audio.json", "audio-model", "audio"),
+        ("image.json", "image-model", "image"),
+        ("video.json", "image-model", "video"),
+    ):
+        directory.joinpath(name).write_text(json.dumps({
+            **base, "model_id": model_id, "pipeline": pipeline
+        }), encoding="utf-8")
+    monkeypatch.setenv("TRUTHLENS_CALIBRATION_ARTIFACT", str(directory))
+    assert load_approved_calibration("audio-model", "audio")["artifact"] == "audio.json"
+    assert load_approved_calibration("image-model", "video")["artifact"] == "video.json"
+    assert load_approved_calibration("image-model", "audio")["status"] == "model_or_pipeline_mismatch"

@@ -61,3 +61,6 @@ python evaluate_calibration.py labelled_scores.csv --model-id "Hemgg/Deepfake-au
 ```
 
 Review the output's group split, dataset hash, raw vs calibrated held-out Brier/log-loss/ECE and reliability bins. Do not approve the artifact unless the held-out sources are independent and representative of the deployment domain. Calibration is specific to the checkpoint, pipeline and score distribution.
+
+
+For a deployment that runs several model pipelines, point `TRUTHLENS_CALIBRATION_ARTIFACT` at a private directory containing one JSON artifact per checkpoint/pipeline pair. TruthLens selects only an artifact whose exact `model_id` and `pipeline` match the current evidence item; unapproved, mismatched or invalid candidates are not applied.
