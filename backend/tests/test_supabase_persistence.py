@@ -22,6 +22,10 @@ class FakeClient:
         self.calls.append((url, json))
         return FakeResponse()
 
+    def delete(self, url, params, headers):
+        self.calls.append((url, params))
+        return FakeResponse()
+
 
 def test_supabase_persistence_is_optional_when_secrets_are_missing(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
@@ -49,3 +53,16 @@ def test_supabase_persistence_writes_case_assets_and_events(monkeypatch):
         }],
     }
     assert supabase_persistence.persist_case(report, "firebase-user", "Case") is True
+
+
+def test_supabase_delete_is_optional_when_secrets_are_missing(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    assert supabase_persistence.delete_case("case-id", "firebase-user") is False
+
+
+def test_supabase_delete_uses_both_case_and_owner_filters(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    monkeypatch.setattr(supabase_persistence.httpx, "Client", FakeClient)
+    assert supabase_persistence.delete_case("case-id", "firebase-user") is True
