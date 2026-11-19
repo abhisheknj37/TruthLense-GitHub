@@ -247,3 +247,16 @@ body{background:radial-gradient(ellipse at 80% 5%,#07506433 0,transparent 35%),r
 .provenance-note small{color:#8fa5b8;font-size:11px;line-height:1.55}
 .provenance-note p{font-size:11px;line-height:1.55;color:#b7c8d5;overflow-wrap:anywhere}
 .extracted-text{white-space:pre-wrap;max-height:180px;overflow:auto;padding:10px;background:#08121d;border-radius:8px}
+
+
+.optional-integrations-card{grid-column:1/-1}
+.optional-integrations-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.optional-integrations-heading h2{margin:6px 0 0}
+.integration-status-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+.integration-status-item{min-width:0;padding:12px 13px;background:rgba(8,18,30,.72);border:1px solid rgba(105,146,170,.2);border-radius:10px;display:grid;gap:7px}
+.integration-status-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.integration-status-top b{font-size:12px;text-transform:capitalize}
+.integration-status-tag{padding:4px 7px;border-radius:20px;border:1px solid #2c5260;background:#102832;color:#a4d9d4;font:9px 'DM Mono';text-transform:capitalize;white-space:nowrap}
+.integration-status-item small{font-size:10px;line-height:1.5;color:#91a6bb;overflow-wrap:anywhere}
+.integration-status-item .integration-missing{color:#e1bd86}
+@media(max-width:850px){.integration-status-list{grid-template-columns:1fr}.optional-integrations-heading{align-items:flex-start;flex-direction:column}}
