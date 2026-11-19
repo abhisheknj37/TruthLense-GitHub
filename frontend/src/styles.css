@@ -260,3 +260,30 @@ body{background:radial-gradient(ellipse at 80% 5%,#07506433 0,transparent 35%),r
 .integration-status-item small{font-size:10px;line-height:1.5;color:#91a6bb;overflow-wrap:anywhere}
 .integration-status-item .integration-missing{color:#e1bd86}
 @media(max-width:850px){.integration-status-list{grid-template-columns:1fr}.optional-integrations-heading{align-items:flex-start;flex-direction:column}}
+
+
+/* Investigator OCR correction */
+.ocr-correction {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border, #dce2ea);
+}
+.ocr-correction label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.ocr-correction textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+}
+.ocr-correction small { color: var(--muted, #64748b); }
