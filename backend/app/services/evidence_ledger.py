@@ -50,7 +50,23 @@ def _signature(event_hash: str) -> tuple[str | None, str | None]:
 def append_case_events(report_id: str, assets: list[dict[str, Any]], owner_uid: str) -> list[dict[str, Any]]:
     events = [{"event": "case_created", "detail": "Investigation created.", "owner_uid": owner_uid, "asset_count": len(assets)}]
     for asset in assets:
-        events.append({"event": "evidence_received", "detail": f"Evidence received: {asset.get('filename', 'unnamed')}.", "asset_id": asset.get("asset_id"), "filename": asset.get("filename"), "sha256": asset.get("sha256"), "size_bytes": asset.get("size_bytes")})
+        model = asset.get("model_assessment") or {}
+        video = asset.get("video_analysis") or {}
+        events.append({
+            "event": "evidence_received",
+            "detail": f"Evidence received: {asset.get('filename', 'unnamed')}.",
+            "asset_id": asset.get("asset_id"),
+            "filename": asset.get("filename"),
+            "media_type": asset.get("media_type"),
+            "sha256": asset.get("sha256"),
+            "size_bytes": asset.get("size_bytes"),
+            "analysis_status": asset.get("analysis_status"),
+            "model_id": video.get("model_name") or model.get("model_name"),
+            "model_prediction": video.get("prediction") or model.get("prediction"),
+            "integrity_status": (asset.get("integrity_verification") or {}).get("status"),
+            "provenance_status": (asset.get("provenance") or {}).get("content_credentials", {}).get("status"),
+            "original_retention_status": (asset.get("evidence_storage") or {}).get("status", "not_recorded"),
+        })
     events.append({"event": "analysis_completed", "detail": "Automated analysis completed; human review required."})
     stored = []
     with _connect() as db:
@@ -114,3 +130,11 @@ def verify_case_chain(report_id: str) -> dict[str, Any]:
         "key_id": os.getenv("TRUTHLENS_LEDGER_KEY_ID", "truthlens-ledger-key-1") if signed else None,
         "note": "Local hash-chain verification" + (" with server-secret HMAC signatures." if signed else ". HMAC signing is not configured.") + " This is not an independently trusted timestamp or external anchor.",
     }
+
+
+def delete_case_events(report_id: str) -> int:
+    """Remove a case's local ledger records when the owning case is deleted or never persisted."""
+    with _connect() as db:
+        cursor = db.execute("DELETE FROM evidence_events WHERE report_id=?", (report_id,))
+        return int(cursor.rowcount)
+

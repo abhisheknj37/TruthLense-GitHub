@@ -45,3 +45,13 @@ def test_unsigned_ledger_is_explicit_about_missing_hmac(tmp_path, monkeypatch):
     result = evidence_ledger.verify_case_chain("case-unsigned")
     assert result["status"] == "valid"
     assert result["signature_status"] == "not_configured"
+
+
+def test_delete_case_events_removes_only_requested_case(tmp_path, monkeypatch):
+    monkeypatch.setattr(evidence_ledger, "DB_PATH", tmp_path / "delete-ledger.sqlite3")
+    evidence_ledger.append_case_events("case-one", [], "user-1")
+    evidence_ledger.append_case_events("case-two", [], "user-1")
+    removed = evidence_ledger.delete_case_events("case-one")
+    assert removed == 2
+    assert evidence_ledger.verify_case_chain("case-one")["status"] == "not_found"
+    assert evidence_ledger.verify_case_chain("case-two")["status"] == "valid"
