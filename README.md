@@ -12,11 +12,11 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 - **New investigation:** drag-and-drop evidence intake, image thumbnails, video previews, audio playback cards, per-file validation, removal and total upload-size summary.
 - **Analysis pipeline:** media inspection, modality analysis, evidence correlation, then human review and reporting. Browser upload progress is shown; the API does not currently stream model-stage progress.
 - **Reports:** image face regions and optional Grad-CAM-style patch attribution, sampled video-frame timeline, audio speech-window scores, metadata, SHA-256 fingerprint and cross-modal comparison.
-- **Case history:** reopen prior investigations, search saved cases, and remove local report records.
+- **Case history:** reopen server-persisted investigations, search saved cases, and delete reports and their attribution artifacts for the signed-in account.
 - **Exports:** JSON download and print-friendly report that can be saved as PDF from the browser print dialog.
 - **Settings:** local workspace label and API health check.
 
-Completed case reports are stored in the current browser's local storage. They are not synchronized to a server or shared across browsers/devices. The upload previews are temporary browser object URLs. The API processes uploaded media using temporary working copies and removes those copies after analysis.
+Completed reports, activity events, evidence metadata, SHA-256 verification results and generated model-attribution PNGs are persisted by the backend, scoped to the verified Firebase UID. The dashboard polls the authenticated activity feed every 8 seconds; case history and reports are loaded from the API and can be accessed across browsers/devices that sign in to the same account. Original uploaded media is processed from temporary working copies and removed after analysis; it is not retained as a case attachment. By default, the SQLite database and heatmap artifacts are stored under `backend/data/`. Back up and protect this directory in deployment.
 
 ## Authentication
 
@@ -24,8 +24,8 @@ Completed case reports are stored in the current browser's local storage. They a
 - FastAPI verifies Firebase ID tokens (signed JWTs) on protected requests. The API never trusts a user ID sent in the request body.
 - Follow [docs/FIREBASE_AUTH_SETUP.md](docs/FIREBASE_AUTH_SETUP.md) to configure your Firebase project and local secrets.
 - Copy `frontend/.env.example` to `frontend/.env.local`; copy `backend/.env.example` to `backend/.env`. Keep the Firebase Admin service-account JSON private and outside Git.
-- The analysis API and `/api/me` require a valid token. Public health checks remain unauthenticated.
-- Browser case history is scoped by Firebase UID, but remains local to that browser. Cloud-synced case storage and role-based access are not implemented yet.
+- The analysis, activity, report retrieval, heatmap retrieval and report deletion APIs require a valid Firebase ID token. Public health and model-capability checks remain unauthenticated.
+- Report records and heatmap artifacts are scoped by Firebase UID in the backend database. Original uploaded media is not stored after processing.
 
 ## Current model-backed pipelines
 
@@ -33,7 +33,7 @@ Completed case reports are stored in the current browser's local storage. They a
 - **Video:** up to eight evenly spaced frames → same face-image classifier → timestamped frame results and clip-level median over face-bearing frames.
 - **Audio:** 16 kHz mono speech windows → Wav2Vec2 classifier → segment scores and median summary.
 - **Cross-modal:** optional comparison of separate audio/video model signals only when the user confirms they belong to the same recording.
-- **Evidence:** SHA-256 fingerprint, media metadata and structured JSON report.
+- **Evidence:** server-computed SHA-256 fingerprint compared with a browser pre-upload digest, media metadata and structured JSON report. A matching digest verifies transfer integrity only.
 
 ## Selected pretrained models
 
@@ -91,7 +91,7 @@ Document uploads such as PDF, DOCX and XLSX are not supported by the current ana
 - Audio results may not generalize beyond the model's limited training scope.
 - Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities.
 - Cross-modal agreement is not proof of authenticity or synchronization.
-- Browser case history is local to one browser profile and is not a server-side case-management database.
+- The backend database and heatmap directory are persistent local server storage; production deployments should use backed-up durable storage and strict filesystem permissions.
 - Uploaded files are never executed. Public deployment requires isolated processing, authentication, rate limits and stronger security controls.
 
 See `docs/ARCHITECTURE.md`, `docs/EVALUATION.md` and `docs/DEMO_CHECKLIST.md`.
