@@ -106,7 +106,13 @@ function exportPdf(report) {
       "</p><p><b>Model signal:</b> " + escapeHtml(predictionLabel(model.prediction)) +
       "</p><p><b>Model:</b> " + escapeHtml(model.model_name || "Not available") +
       "</p><p><b>SHA-256:</b><br><code>" + escapeHtml(asset.sha256) +
-      "</code></p><table>" + meta + "</table></section>";
+      "</code></p><table>" + meta + "</table>" +
+      (asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h3>Image forensic parameters</h3><pre>" + escapeHtml(JSON.stringify(asset.forensic_parameters, null, 2)) + "</pre>" : "") +
+      (asset.provenance ? "<h3>Evidence provenance</h3><pre>" + escapeHtml(JSON.stringify(asset.provenance, null, 2)) + "</pre>" : "") +
+      (asset.text_extraction ? "<h3>OCR / transcription</h3><pre>" + escapeHtml(JSON.stringify(asset.text_extraction, null, 2)) + "</pre>" : "") +
+      (asset.video_analysis?.temporal_forensics ? "<h3>Temporal video review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.temporal_forensics, null, 2)) + "</pre>" : "") +
+      (asset.video_analysis?.face_identity_consistency ? "<h3>Face consistency review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.face_identity_consistency, null, 2)) + "</pre>" : "") +
+      "</section>";
   }).join("");
   const limitations = (report.limitations || []).map((item) => "<li>" + escapeHtml(item) + "</li>").join("");
   const html = "<!doctype html><html><head><title>TruthLens case report</title><style>" +
@@ -121,7 +127,9 @@ function exportPdf(report) {
     "</p><h2>Evidence inventory and findings</h2>" + rows +
     "<h2>Cross-modal review</h2>" + (report.cross_modal_review || []).map((item) =>
       "<p><b>" + escapeHtml(item.type || "Review") + " · " + escapeHtml(item.status) +
-      ":</b> " + escapeHtml(item.detail) + "</p>").join("") +
+      ":</b> " + escapeHtml(item.detail || item.note || item.interpretation || JSON.stringify(item)) + "</p>").join("") +
+    (report.text_analysis ? "<h2>Text and context review</h2><pre>" + escapeHtml(JSON.stringify(report.text_analysis, null, 2)) + "</pre>" : "") +
+    (report.evidence_events?.length ? "<h2>Hash-linked evidence events</h2><pre>" + escapeHtml(JSON.stringify(report.evidence_events, null, 2)) + "</pre>" : "") +
     "<h2>Limitations and review notes</h2><ul>" + limitations + "</ul>" +
     "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p>" +
     "<script>window.onload=function(){window.print()}<\/script></body></html>";
