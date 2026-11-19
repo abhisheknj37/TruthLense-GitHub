@@ -476,6 +476,13 @@ def put_finding_review(
     report = get_user_report(current_user["uid"], report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
+    valid_finding_ids = {
+        f"{asset.get('asset_id')}:{str(finding.get('code') or index)}"
+        for asset in report.get("assets", [])
+        for index, finding in enumerate(asset.get("observations") or [{"code": "MODEL_ASSESSMENT"}])
+    }
+    if finding_id not in valid_finding_ids:
+        raise HTTPException(status_code=404, detail="Finding not found in this investigation.")
     status_value = str(payload.get("status", ""))
     comment = str(payload.get("comment", ""))
     try:

@@ -26,3 +26,12 @@ Only compare audio/video assets when the uploader confirms they belong to the sa
 - Never say "100% real" or "definitely fake".
 - Show Grad-CAM-style visualization as model attribution, never as a ground-truth manipulation mask.
 - Preserve original evidence and its SHA-256 digest.
+
+
+## Voice synthesis / spoof-speech indicator
+The audio report may expose a synthetic/spoof-direction research-model indicator with checkpoint ID, number of speech windows and median model score. It is not speaker identification, source attribution, or proof of voice cloning. Keep the acoustic waveform/timeline review separate from the synthetic-speech classifier indicator.
+
+## Cross-modal demonstration
+Use one case containing image OCR, sampled video-frame text, an audio transcript and investigator-supplied claim text. TruthLens compares each available pair using lexical token overlap and displays previews, shared terms and comparison scope. This is not semantic contradiction detection or fact verification. A human analyst must inspect original media and primary sources.
+
+The investigator review UI stores a decision and bounded rationale for each technical finding, scoped to the authenticated user and report. PDF export includes saved decisions, available reviewer metadata, timestamps, per-asset outputs, cross-modal comparisons and limitations. A saved finding decision is an analyst assessment of that finding, not a media-authenticity verdict.

@@ -14,14 +14,17 @@
 1. Upload a face-containing image. Show the image-model signal, separate class scores and Grad-CAM-style patch-attribution overlay.
 2. Upload a short face-containing video. Show sampled frame indices, timestamps and frame-level model signals.
 3. Upload speech in WAV/FLAC/OGG. Show segment-level audio scores and the aggregate model signal.
-4. Upload the associated separate audio and video files, then explicitly select "These audio and video files belong to the same recording". Show cross-modal agreement, disagreement or inconclusive status.
-5. Export the JSON report and point out SHA-256 fingerprint, model IDs, heuristic score band and limitations.
+4. Upload the associated separate audio and video files, then explicitly select "These audio and video files belong to the same recording". Show cross-modal agreement, disagreement or inconclusive status, plus optional timing/synchronization results when configured.
+5. Add investigator-supplied claim/caption text to the same case. Show pairwise comparisons with image OCR, video-frame text and the audio transcript, including source labels, shared terms and previews.
+6. Review at least one technical finding: choose a decision, write a rationale and save it. Navigate away and reopen the case to show that the saved review persists.
+7. Export the PDF. Point out the audio synthetic/spoof indicator, text-source comparisons, analyst decisions, limitations and SHA-256 fingerprint. Export JSON as the machine-readable companion.
 
 ## Presentation language
 - Say "model signal", not "proof", "certain" or "verified fake".
 - The 0.35 / 0.65 thresholds are heuristic score bands, not calibrated confidence boundaries.
 - The image model is face-crop focused; a no-face image remains inconclusive.
 - The video pipeline samples frames; it is not a temporal or lip-sync detector.
-- The audio model's model card describes a multi-ethnic English training set and says more data are needed. Do not generalize it to all languages, codecs, generators or noisy recordings.
+- The audio model's model card describes a multi-ethnic English training set and says more data are needed. Its synthetic/spoof-direction indicator is not speaker identification and does not prove voice cloning. Do not generalize it to all languages, codecs, generators or noisy recordings.
+- Text-source overlap is lexical triage only. Shared wording does not establish agreement or truth; low overlap does not establish contradiction. Review the original image, frames, audio and primary sources.
 - Cross-modal comparison compares independent model signals only; it does not prove synchronization, identity or provenance.
 - If a model fails to download/load or the sample is outside the model scope, report inconclusive.

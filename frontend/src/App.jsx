@@ -230,6 +230,7 @@ function exportPdf(report) {
       asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h4>Image forensic measurements</h4>" + objectTable(asset.forensic_parameters) : "",
       Object.keys(provenance).length ? "<h4>Evidence provenance</h4>" + objectTable(provenance) : "",
       asset.text_extraction ? renderOcr(asset.text_extraction, asset.media_type) : "",
+      asset.model_assessment?.voice_synthesis_review ? "<h4>Synthetic / cloned-voice review indicator · research model</h4><p><b>Indicator:</b> " + esc(titleCase(asset.model_assessment.voice_synthesis_review.indicator)) + "</p><p><b>Model:</b> " + esc(asset.model_assessment.voice_synthesis_review.model || model.model_name || "Not recorded") + " · <b>Windows:</b> " + esc(safeValue("windows", asset.model_assessment.voice_synthesis_review.windows_assessed)) + " · <b>Median fake-direction score:</b> " + esc(safeValue("score", asset.model_assessment.voice_synthesis_review.median_fake_model_score)) + "</p><p class='muted'>" + esc(asset.model_assessment.voice_synthesis_review.note || "Not recorded") + "</p>" : "",
       asset.model_assessment?.audio_review_timeline ? "<h4>Audio review timeline</h4>" + objectTable(asset.model_assessment.audio_review_timeline) : "",
       asset.video_analysis?.temporal_forensics ? renderTemporal(asset.video_analysis.temporal_forensics) : "",
       asset.video_analysis?.face_identity_consistency ? "<h4>Face consistency review</h4>" + objectTable(asset.video_analysis.face_identity_consistency) : ""
@@ -422,6 +423,12 @@ function ModelAssessment({ asset }) {
       <span className={"model-pill " + (assessed ? "available" : "pending")}>{assessed ? "Signal available" : "Inconclusive"}</span>
     </div>
     {details.model_name && <small className="model-name">{details.model_name}</small>}{asset.media_type === "audio" && <p className="model-note">Synthetic / spoof-speech screening only. This model does not identify a cloned speaker, prove voice cloning, or authenticate speaker identity.</p>}
+    {asset.media_type === "audio" && model.voice_synthesis_review && <div className="provenance-note">
+      <b>SYNTHETIC / CLONED-VOICE REVIEW INDICATOR</b>
+      <span>{String(model.voice_synthesis_review.indicator || "inconclusive").replaceAll("_", " ")}</span>
+      <small>{model.voice_synthesis_review.note}</small>
+      <small>{model.voice_synthesis_review.model || model.model_name} · {model.voice_synthesis_review.windows_assessed || 0} speech window(s) assessed · median fake-direction score {scorePercent(model.voice_synthesis_review.median_fake_model_score)}</small>
+    </div>}
     {details.scores && <div className="score-list">
       {Object.entries(details.scores).filter(([key, value]) => typeof value === "number" && (key.includes("fake") || key.includes("real") || key.includes("ai_generated")))
         .map(([key, value]) => <ScoreBar key={key} label={key} value={value} />)}
