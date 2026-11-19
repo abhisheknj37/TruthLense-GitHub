@@ -48,6 +48,7 @@ def test_optional_integration_status_is_explicit_and_does_not_reveal_paths(monke
     monkeypatch.setenv("TRUTHLENS_SYNCNET_WEIGHTS", str(tmp_path / "missing.model"))
     monkeypatch.setenv("TRUTHLENS_TESSERACT_CMD", str(tmp_path / "tesseract.exe"))
     monkeypatch.setenv("TRUTHLENS_ASR_MODEL", "")
+    monkeypatch.setenv("TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD", "2.0")
     status = get_optional_integration_status()
 
     expected = {
@@ -62,4 +63,6 @@ def test_optional_integration_status_is_explicit_and_does_not_reveal_paths(monke
     assert "database" not in status["evidence_ledger"]
     assert "database_name" in status["evidence_ledger"]
     assert status["speech_transcription"]["status"] == "not_configured"
+    assert status["face_consistency"]["threshold_config_valid"] is False
+    assert status["face_consistency"]["review_threshold"] == 0.35
 
