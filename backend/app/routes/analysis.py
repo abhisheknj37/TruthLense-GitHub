@@ -301,8 +301,12 @@ def capabilities():
         "max_files_per_case": MAX_FILES_PER_CASE,
         "models": {
             "image": image_detector.model_name,
-            "audio": audio_detector.model_name,
+            "audio": f"Wav2Vec2 ({audio_detector.model_name})",
             "video": "sampled face frames evaluated with the image model",
+        },
+        "model_checkpoints": {
+            "image": image_detector.model_name,
+            "audio": audio_detector.model_name,
         },
         "available_analysis": [
             "image face-crop classification and optional transformer patch attribution",
