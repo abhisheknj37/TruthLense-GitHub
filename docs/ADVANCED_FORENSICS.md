@@ -61,3 +61,56 @@ cd backend
 ```
 
 Install the system Tesseract and FFmpeg executables separately where applicable. First-run model downloads may be large. All missing dependencies, weights and unsupported formats should remain visible as unavailable/inconclusive states.
+
+
+## Windows optional-integration configuration
+
+Optional integrations are configured on the backend computer, not in the browser. From PowerShell, create the backend environment file once:
+
+```powershell
+cd E:\TruthLense-GitHub\backend
+Copy-Item .env.example .env
+```
+
+Install the Python extras you intend to use. The complete optional set is listed here; some packages, particularly InsightFace and SyncNet, may need platform-specific installation work:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-forensics.txt
+```
+
+### System executables
+
+- **Tesseract OCR:** install a Windows build, then configure its executable path in `backend/.env`. Example: `TRUTHLENS_TESSERACT_CMD=C:/Program Files/Tesseract-OCR/tesseract.exe`. The environment variable is optional when `tesseract.exe` is already available on PATH.
+- **FFmpeg:** install FFmpeg and add its `bin` directory to the backend process PATH. Verify from the same PowerShell session with `ffmpeg -version`. SyncNet needs FFmpeg to prepare paired audio/video inputs.
+- **InsightFace:** the configured model pack (default `buffalo_l`) may download into the backend user's InsightFace cache on first use. The Settings status reports whether the Python dependencies and model cache are detected.
+
+### Model paths and environment variables
+
+Edit `backend/.env` using paths that exist on the backend machine:
+
+| Variable | Purpose |
+|---|---|
+| `TRUTHLENS_TEMPORAL_MODEL` | Optional TorchScript temporal checkpoint. It must match the documented tensor input, architecture and class mapping. |
+| `TRUTHLENS_FACE_MODEL` | InsightFace model-pack name; defaults to `buffalo_l`. |
+| `TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD` | Within-clip cosine-similarity review threshold; defaults to `0.35`, and is not an identity decision. |
+| `TRUTHLENS_SYNCNET_WEIGHTS` | Path to a compatible SyncNet checkpoint. |
+| `TRUTHLENS_ASR_MODEL` | Transformers-compatible automatic-speech-recognition checkpoint ID or local model path. |
+| `TRUTHLENS_TESSERACT_CMD` | Optional absolute path to `tesseract.exe` when it is not on PATH. |
+| `TRUTHLENS_LEDGER_DB` | Optional SQLite evidence-ledger location. |
+| `HF_HOME` | Optional Hugging Face model cache location. |
+
+Leave model paths blank until you have a compatible checkpoint. This repository does not bundle temporal-classifier or SyncNet weights. A filename alone does not establish checkpoint compatibility.
+
+The current C2PA adapter uses the installed SDK to read manifest and validation metadata. It does not expose a project-specific trust-store or trust-anchor path setting. Treat the returned validation data as something to review, not as a conclusion that a signer is trusted.
+
+### Check readiness from the app
+
+After editing `.env`, restart FastAPI from the backend folder:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Open [http://127.0.0.1:8000/api/capabilities](http://127.0.0.1:8000/api/capabilities). The response now includes `optional_integration_status`, with readiness and missing-prerequisite information. The frontend Settings page reads the same data and provides a Refresh button.
+
+A status such as `ready_to_attempt` only means the prerequisite checks passed. Actual inference can still fail due to checkpoint incompatibility, unsupported media, model downloads, device limits or runtime errors. Configure secrets only in local `.env` files or deployment secret storage; never commit credentials or model weights.
