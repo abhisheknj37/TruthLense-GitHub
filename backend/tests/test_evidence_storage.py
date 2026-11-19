@@ -98,3 +98,50 @@ def test_expired_originals_are_purged_for_owner_only(tmp_path, monkeypatch):
     assert not stored.exists()
     assert not sidecar.exists()
     assert evidence_storage.purge_expired_originals("owner-b")["expired_originals_removed"] == 0
+
+
+def test_original_download_api_checks_case_owner_and_returns_original(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.auth import get_current_user
+    from app.main import app
+    from app.routes import analysis as analysis_module
+
+    original = tmp_path / "original.png"
+    original.write_bytes(b"original-evidence-content")
+    report = {
+        "report_id": "12345678-1234-1234-1234-123456789abc",
+        "assets": [{
+            "asset_id": "abcdef12-1234-1234-1234-123456789abc",
+            "filename": "evidence.png",
+            "sha256": "a" * 64,
+            "evidence_storage": {"status": "retained", "media_type": "image/png"},
+        }],
+    }
+    monkeypatch.setattr(
+        analysis_module,
+        "get_user_report",
+        lambda uid, report_id: report if uid == "owner" and report_id == report["report_id"] else None,
+    )
+    monkeypatch.setattr(
+        analysis_module,
+        "resolve_original",
+        lambda uid, report_id, asset: (original, "available") if uid == "owner" else (None, "invalid_reference"),
+    )
+    app.dependency_overrides[get_current_user] = lambda: {"uid": "owner"}
+    try:
+        with TestClient(app) as client:
+            downloaded = client.get(
+                "/api/reports/12345678-1234-1234-1234-123456789abc/assets/abcdef12-1234-1234-1234-123456789abc/original"
+            )
+            assert downloaded.status_code == 200
+            assert downloaded.content == b"original-evidence-content"
+            assert "evidence.png" in downloaded.headers["content-disposition"]
+            assert downloaded.headers["x-content-type-options"] == "nosniff"
+
+            app.dependency_overrides[get_current_user] = lambda: {"uid": "other"}
+            denied = client.get(
+                "/api/reports/12345678-1234-1234-1234-123456789abc/assets/abcdef12-1234-1234-1234-123456789abc/original"
+            )
+            assert denied.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
