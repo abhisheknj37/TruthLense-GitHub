@@ -249,7 +249,7 @@ function exportPdf(report) {
     ? "<p class='section-intro'>A decision confirms or rejects only the named technical finding. It does not establish media authenticity.</p><table class='data-table'><thead><tr><th>Finding</th><th>Decision</th><th>Analyst rationale</th><th>Reviewer</th><th>Updated</th></tr></thead><tbody>" +
       report.investigator_reviews.map((item) => "<tr><td>" + esc(findingTitles.get(item.finding_id) || item.finding_id || "Unmatched finding") + "<br><code>" + esc(item.finding_id || "") + "</code></td><td><span class='tag " +
       esc(item.status) + "'>" + esc(titleCase(item.status)) + "</span></td><td>" + esc(item.comment || "No analyst rationale recorded") +
-      "</td><td>" + esc(item.reviewer_uid || item.user_uid || "Not recorded") + "</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
+      "</td><td>Not exposed by review API</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
     : "<p class='empty'>No saved investigator decisions were available at export time.</p>";
   const events = (report.evidence_events || []).length
     ? "<table class='data-table'><thead><tr><th>Event</th><th>Details</th><th>Timestamp</th><th>Event hash</th></tr></thead><tbody>" +
