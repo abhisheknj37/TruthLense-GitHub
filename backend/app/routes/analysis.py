@@ -28,6 +28,14 @@ from app.services.activity import (
 from app.services.correlation import correlate_modalities
 from app.services.integrity import compare_sha256
 from app.services.media import MediaError, inspect_media
+from app.services.provenance import inspect_provenance
+from app.services.ocr import extract_image_text, extract_video_frame_text
+from app.services.transcription import transcribe_audio
+from app.services.text_analysis import analyze_text_context
+from app.services.claim_verification import verify_claims
+from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
+from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
+from app.services.sync_analysis import estimate_audio_video_activity_alignment
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -73,6 +81,8 @@ async def analyze_case(
         ) from exc
 
     assets: list[AssetResult] = []
+    retained_paths: dict[str, list[Path]] = {}
+    extracted_text: list[str] = []
     for index, upload in enumerate(files):
         filename = Path(upload.filename or "upload").name
         suffix = Path(filename).suffix.lower()
@@ -85,6 +95,8 @@ async def analyze_case(
                 temporary_path = Path(temp.name)
             size = await save_upload(upload, temporary_path)
             result = inspect_media(temporary_path)
+            if result["media_type"] in {"video", "audio"}:
+                retained_paths.setdefault(result["media_type"], []).append(temporary_path)
 
             digest = hashlib.sha256()
             with temporary_path.open("rb") as evidence_file:
@@ -96,10 +108,20 @@ async def analyze_case(
             integrity_verification["checked_at"] = datetime.now(timezone.utc).isoformat()
 
             video_analysis: dict = {}
+            text_extraction: dict = {}
+            provenance = inspect_provenance(temporary_path, server_digest, filename)
+            provenance["content_credentials"] = await run_in_threadpool(verify_c2pa, temporary_path)
             if result["media_type"] == "image":
+                text_extraction = await run_in_threadpool(extract_image_text, temporary_path)
+                if text_extraction.get("text"):
+                    extracted_text.append(text_extraction["text"])
                 model_assessment = await run_in_threadpool(image_detector.analyze_image, temporary_path, True)
             elif result["media_type"] == "video":
+                text_extraction = await run_in_threadpool(extract_video_frame_text, temporary_path)
+                extracted_text.extend(frame.get("text", "") for frame in text_extraction.get("frames", []))
                 video_analysis = await run_in_threadpool(video_detector.analyze, temporary_path)
+                video_analysis["temporal_forensics"] = await run_in_threadpool(temporal_video_forensics, temporary_path)
+                video_analysis["face_identity_consistency"] = await run_in_threadpool(face_identity_consistency, temporary_path)
                 model_assessment = {
                     "status": video_analysis.get("status", "inconclusive"),
                     "model_name": video_analysis.get("model_name"),
@@ -110,6 +132,9 @@ async def analyze_case(
                     "note": video_analysis.get("note", ""),
                 }
             else:
+                text_extraction = await run_in_threadpool(transcribe_audio, temporary_path)
+                if text_extraction.get("text"):
+                    extracted_text.append(text_extraction["text"])
                 model_assessment = await run_in_threadpool(audio_detector.analyze, temporary_path)
 
             observations = [Observation(**item) for item in result["observations"]]
@@ -164,12 +189,23 @@ async def analyze_case(
                 video_analysis=video_analysis,
                 sampled_frames=result["sampled_frames"],
                 integrity_verification=integrity_verification,
+                forensic_parameters=result.get("forensic_parameters", {}),
+                provenance=provenance,
+                text_extraction=text_extraction,
             ))
         except MediaError as exc:
+            for retained in retained_paths.values():
+                for retained_path in retained:
+                    retained_path.unlink(missing_ok=True)
             raise HTTPException(status_code=422, detail=f"{filename}: {exc}") from exc
+        except Exception:
+            for retained in retained_paths.values():
+                for retained_path in retained:
+                    retained_path.unlink(missing_ok=True)
+            raise
         finally:
             await upload.close()
-            if temporary_path and temporary_path.exists():
+            if temporary_path and temporary_path.exists() and temporary_path not in [p for paths in retained_paths.values() for p in paths]:
                 temporary_path.unlink(missing_ok=True)
 
     assets_for_correlation = [asset.model_dump() for asset in assets]
