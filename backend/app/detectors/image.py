@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image
+from PIL import Image, ImageOps
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 
@@ -101,21 +101,76 @@ class ImageDeepfakeDetector:
                 raise RuntimeError(self.load_error) from exc
 
     def _face_crops(self, image: Image.Image) -> list[tuple[Image.Image, list[int]]]:
-        rgb = np.asarray(image.convert("RGB"))
+        # Respect EXIF orientation before detection (common in phone photos).
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        rgb = np.asarray(image)
         gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-        faces = self.face_cascade.detectMultiScale(
-            cv2.equalizeHist(gray),
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(64, 64),
+        enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+
+        cascade_names = (
+            "haarcascade_frontalface_default.xml",
+            "haarcascade_frontalface_alt2.xml",
+            "haarcascade_frontalface_alt.xml",
+            "haarcascade_profileface.xml",
         )
+        cascades = []
+        for name in cascade_names:
+            cascade = cv2.CascadeClassifier(str(Path(cv2.data.haarcascades) / name))
+            if not cascade.empty():
+                cascades.append(cascade)
+        if self.face_cascade is not None and not self.face_cascade.empty():
+            cascades.insert(0, self.face_cascade)
+
+        # Run multiple cascades and contrast variants. A detector miss must remain
+        # inconclusive; it must never be converted into a real/fake verdict.
+        detections: list[tuple[int, int, int, int]] = []
+        for cascade in cascades:
+            for source in (gray, enhanced):
+                found = cascade.detectMultiScale(
+                    source,
+                    scaleFactor=1.05,
+                    minNeighbors=3,
+                    minSize=(32, 32),
+                    flags=cv2.CASCADE_SCALE_IMAGE,
+                )
+                detections.extend(tuple(int(v) for v in box) for box in found)
+
+        # If no face is found at native scale, retry an upscaled image to help
+        # with smaller faces. Convert the boxes back to original coordinates.
+        if not detections:
+            scale = 1.5
+            enlarged = cv2.resize(enhanced, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            for cascade in cascades:
+                found = cascade.detectMultiScale(
+                    enlarged,
+                    scaleFactor=1.05,
+                    minNeighbors=3,
+                    minSize=(48, 48),
+                    flags=cv2.CASCADE_SCALE_IMAGE,
+                )
+                detections.extend(
+                    (int(x / scale), int(y / scale), int(w / scale), int(h / scale))
+                    for x, y, w, h in found
+                )
+
+        if not detections:
+            return []
+
+        # Non-maximum suppression removes duplicate detections from the cascades.
+        boxes = [[x, y, w, h] for x, y, w, h in detections]
+        keep = cv2.dnn.NMSBoxes(boxes, [1.0] * len(boxes), 0.0, 0.35)
+        selected = [detections[int(i)] for i in np.asarray(keep).reshape(-1)] if len(keep) else []
+
         crops: list[tuple[Image.Image, list[int]]] = []
-        for x, y, w, h in sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[:3]:
-            pad = int(max(w, h) * 0.12)
+        for x, y, w, h in sorted(selected, key=lambda f: f[2] * f[3], reverse=True)[:3]:
+            pad = int(max(w, h) * 0.15)
             left, top = max(0, x - pad), max(0, y - pad)
-            right, bottom = min(rgb.shape[1], x + w + pad), min(rgb.shape[0], y + h + pad)
+            right = min(rgb.shape[1], x + w + pad)
+            bottom = min(rgb.shape[0], y + h + pad)
+            if right <= left or bottom <= top:
+                continue
             crop = Image.fromarray(rgb[top:bottom, left:right]).convert("RGB")
-            crops.append((crop, [int(left), int(top), int(right-left), int(bottom-top)]))
+            crops.append((crop, [left, top, right - left, bottom - top]))
         return crops
 
     @staticmethod
