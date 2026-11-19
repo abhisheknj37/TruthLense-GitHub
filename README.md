@@ -2,64 +2,50 @@
 
 **Multimodal Digital Forensics and Media Authenticity Analysis**
 
-TruthLens is a hackathon MVP for inspecting image, video and audio evidence, preserving traceability, and communicating uncertainty clearly.
+TruthLens inspects image, video and speech for manipulation-related model signals, records evidence fingerprints and produces explainable reports for human review.
 
-> A model score is not proof that media is real or fake. Automated findings must remain reviewable by a human.
+> A model score is not proof that media is real or fake. Every finding remains reviewable and may be inconclusive.
 
-## Current implementation
-- Image decoding, dimensions, format and available EXIF metadata.
-- Video metadata and representative frame sampling.
-- WAV/FLAC/OGG audio metadata and signal-level statistics.
-- Multi-file case intake, context notes, SHA-256 evidence fingerprints and a structured forensic report.
-- Explicit `not_configured` model state until validated authenticity models are connected.
-- React dashboard with evidence intake and report visualization.
+## Current model-backed pipelines
+- **Image:** face crops → DeiTFake ViT image classifier → per-face score, heuristic uncertainty band and Grad-CAM-style patch attribution.
+- **Video:** up to eight evenly spaced frames → same face-image classifier → timestamped frame results and clip-level median over face-bearing frames.
+- **Audio:** 16 kHz mono speech windows → Wav2Vec2 classifier → segment scores and median summary.
+- **Cross-modal:** optional comparison of separate audio/video model signals only when the user confirms they belong to the same recording.
+- **Evidence:** SHA-256 fingerprint, media metadata and structured JSON report.
 
-**Not yet implemented:** trained deepfake classifiers, face/voice identity matching, lip-sync classification, cross-modal authenticity scoring, and calibrated confidence. The application intentionally does not invent real/fake verdicts.
+## Selected pretrained models
+- Image: [sakshamkr1/deitfake-v2](https://huggingface.co/sakshamkr1/deitfake-v2) — Apache-2.0 model card; trained on face-cropped images from an OpenForensics-derived dataset; research/educational use.
+- Audio: [Hemgg/Deepfake-audio-detection](https://huggingface.co/Hemgg/Deepfake-audio-detection) — Apache-2.0 model card; Wav2Vec2 base, multi-ethnic English audio dataset, approximately 16 kHz.
 
-## Repository layout
-- `backend/`: FastAPI API, media inspectors and detector adapter.
-- `frontend/`: React + Vite investigation dashboard.
-- `docs/ARCHITECTURE.md`: system design and extension points.
-- `docs/EVALUATION.md`: model validation protocol.
-- `docs/DEMO_CHECKLIST.md`: demo sequence.
+The model cards report their own evaluation metrics. Those numbers are not TruthLens benchmark results. The checkpoints have not been independently validated by this project on a representative forensic test set. The audio model card explicitly says more data are needed. See \`docs/EVALUATION.md\`.
 
 ## Run on Windows PowerShell
 
 Backend terminal:
-```powershell
+\`\`\`powershell
 cd backend
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
-```
-
-If Windows Application Control blocks an executable in your environment, use an administrator-approved Python environment; do not disable security controls to work around the policy.
+.\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt
+.\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload
+\`\`\`
 
 Frontend terminal:
-```powershell
+\`\`\`powershell
 cd frontend
 npm install
 npm run dev
-```
+\`\`\`
 
-Open:
-- Frontend: http://localhost:5173
-- API health: http://127.0.0.1:8000/health
-- API docs: http://127.0.0.1:8000/docs
+Open frontend at http://localhost:5173 and API docs at http://127.0.0.1:8000/docs.
 
-Copy `frontend/.env.example` to `frontend/.env.local` only when you need to change the API URL.
+**First-run note:** PyTorch/Transformers installation and the first model download can be large. The image model loads only when an image with a detected face is analyzed; the audio model loads when an audio file is analyzed. CPU inference works but may be slow. If Windows Application Control blocks an executable, use an administrator-approved Python environment; do not disable security controls to work around the policy.
 
-## Tests
-From `backend/`:
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-```
+## Safety and limitations
+- Image model is face-crop focused; a no-face image returns inconclusive.
+- Video is sampled frame classification, not temporal forensics or lip-sync analysis.
+- Audio results may not generalize beyond the model's limited training scope.
+- Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities.
+- Cross-modal agreement is not proof of authenticity or synchronization.
+- Uploaded files are never executed. Public deployment requires isolated processing and stronger security controls.
 
-## Safe evidence handling
-- Files are limited to 40 MB each and 8 files per case.
-- Temporary uploaded media is deleted after analysis.
-- Uploaded files are never executed.
-- Do not treat EXIF absence, signal statistics or sampled frames as evidence of a deepfake.
-- A public deployment needs isolated media workers, stronger content validation, authentication, rate limiting, private storage and retention controls.
-
-See `docs/ARCHITECTURE.md` before adding model adapters.
+See \`docs/ARCHITECTURE.md\`, \`docs/EVALUATION.md\` and \`docs/DEMO_CHECKLIST.md\`.
