@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -185,7 +186,7 @@ def _extract_region_candidate(pytesseract, variants: list[tuple[str, Image.Image
     regions = _detect_text_regions(base)
     if not regions:
         return None
-    words, confidences, selected_modes = [], [], []
+    words, confidences = [], []
     for x1, y1, x2, y2 in regions:
         crop_variants = []
         for name, image in variants:
@@ -196,12 +197,11 @@ def _extract_region_candidate(pytesseract, variants: list[tuple[str, Image.Image
             words.append(best["text"])
             if best["mean_word_confidence"] is not None:
                 confidences.append(best["mean_word_confidence"])
-            selected_modes.append(best["page_segmentation_mode"])
     if not words:
         return None
-    text = "\\n".join(words)
+    text = "\n".join(words)
     confidence = round(float(np.mean(confidences)), 1) if confidences else None
-    count = sum(len(re.findall(r"\\S+", part)) for part in words)
+    count = sum(len(re.findall(r"\S+", part)) for part in words)
     return {
         "text": text,
         "mean_word_confidence": confidence,
