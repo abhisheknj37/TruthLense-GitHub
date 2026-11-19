@@ -278,7 +278,7 @@ body{background:radial-gradient(ellipse at 80% 5%,#07506433 0,transparent 35%),r
 .analyst-review-panel form{display:grid;gap:13px}
 .analyst-review-panel .field-row{display:grid;gap:7px}
 .analyst-review-panel .field-row>span{font-size:10px;color:#9db6c3}
-.analyst-review-panel select,.analyst-review-panel textarea{width:100%;padding:10px 11px;border:1px solid #365365;border-radius:8px;background:#091823;color:#e4f2f4;font:10px inherit}
+.analyst-review-panel select,.analyst-review-panel textarea{width:100%;padding:10px 11px;border:1px solid #365365;border-radius:8px;background:#091823;color:#e4f2f4;font:inherit;font-size:10px}
 .analyst-review-panel textarea{resize:vertical;line-height:1.5}
 .reviewed-assets{display:grid;gap:8px}
 .reviewed-assets label{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #294554;border-radius:7px;background:#0c202c;color:#b7cbd2;font-size:9px}

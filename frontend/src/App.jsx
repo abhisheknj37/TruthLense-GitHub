@@ -1169,7 +1169,7 @@ export default function App() {
             <div className="notice"><AlertTriangle size={16} /><span>Some files may be inconclusive when there is no detectable face, insufficient speech, decoding errors or unsupported model scope.</span></div>
           </aside>
         </div>
-        {activeReport && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onSaveReview={saveAnalystReview} onJson={() => downloadJson(activeReport)} onPdf={() => {}
+        {activeReport && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onSaveReview={saveAnalystReview} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
       </section>}
@@ -1178,7 +1178,7 @@ export default function App() {
         <div className="page-heading"><div><span className="section-kicker">{page === "history" ? "WORKSPACE / CASE REGISTER" : "WORKSPACE / REPORT LIBRARY"}</span>
           <h1>{page === "history" ? "Case history" : "Reports"}</h1><p>{page === "history" ? "Reopen saved investigations and continue reviewing the evidence." : "Open completed case reports or export an evidence summary."}</p></div>
           <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> New investigation</button></div>
-        {activeReport && page === "reports" && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onSaveReview={saveAnalystReview} onJson={() => downloadJson(activeReport)} onPdf={() => {}
+        {activeReport && page === "reports" && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onSaveReview={saveAnalystReview} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
         <div className="content-panel record-list-panel">
