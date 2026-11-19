@@ -18,6 +18,7 @@ from app.detectors.image import image_detector
 from app.detectors.video import VideoDeepfakeAnalyzer
 from app.schemas import AssetResult, CaseReport, Observation
 from app.services.activity import (
+    get_user_activity_summary,
     get_user_heatmap_path,
     delete_user_report,
     get_user_report,
@@ -238,7 +239,11 @@ def activity_feed(
     current_user: dict = Depends(get_current_user),
 ):
     """Return persistent activity for the signed-in Firebase UID only."""
-    return {"events": list_user_activity(current_user["uid"], limit=limit)}
+    return {
+        "events": list_user_activity(current_user["uid"], limit=limit),
+        "summary": get_user_activity_summary(current_user["uid"]),
+        "refresh_interval_seconds": 8,
+    }
 
 
 @router.get("/reports/{report_id}")
