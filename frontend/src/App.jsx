@@ -125,6 +125,15 @@ function exportPdf(report) {
   return true;
 }
 
+function BrandGlyph({ size = 30 }) {
+  return <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+    <circle cx="20" cy="20" r="13.2" stroke="currentColor" strokeWidth="2.2"/>
+    <circle cx="20" cy="20" r="6.1" stroke="currentColor" strokeWidth="2.2"/>
+    <circle cx="20" cy="20" r="2" fill="currentColor"/>
+    <path d="M20 1.5v7M20 31.5v7M1.5 20h7M31.5 20h7M7 7l5 5M28 28l5 5M33 7l-5 5M12 28l-5 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+  </svg>;
+}
+
 function ScoreBar({ label, value }) {
   if (typeof value !== "number") return null;
   return <div className="score-row">
@@ -553,7 +562,7 @@ export default function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <button className="brand" onClick={() => setPage("dashboard")}>
-        <span className="brand-mark"><Fingerprint size={22} /></span>
+        <span className="brand-mark"><BrandGlyph size={35} /></span>
         <span><strong>TRUTHLENS</strong><small>FORENSIC INTELLIGENCE</small></span>
       </button>
       <div className="workspace-switch"><span className="workspace-avatar">TL</span><span><small>WORKSPACE</small><b>{workspaceName}</b></span><ChevronRight size={15} /></div>
