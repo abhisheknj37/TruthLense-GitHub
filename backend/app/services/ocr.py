@@ -226,7 +226,7 @@ def _ocr_analysis_gate(text: str, confidence: float | None, word_count: int) -> 
     visible = [char for char in text if not char.isspace()]
     ratio = sum(char.isalnum() for char in visible) / len(visible) if visible else 0.0
     tokens = re.findall(r"[A-Za-z]{3,}", text)
-    token_count = max(1, len(re.findall(r"\\S+", text)))
+    token_count = max(1, len(re.findall(r"\S+", text)))
     meaningful_token_ratio = len(tokens) / token_count
     eligible = bool(
         text.strip() and confidence is not None and confidence >= 45
