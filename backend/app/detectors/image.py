@@ -61,6 +61,10 @@ class ImageDeepfakeDetector:
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
 
+    @property
+    def model_name(self) -> str:
+        return MODEL_ID
+
     def _load(self) -> None:
         if self.model is not None:
             return
@@ -186,6 +190,32 @@ class ImageDeepfakeDetector:
             "uncertainty_band": _uncertainty_band(fake_score),
             "gradcam_overlay_base64": cam_b64,
         }
+
+    def analyze_pil_frame(self, image: Image.Image, include_cam: bool = False) -> dict[str, Any]:
+        """Run the same face-crop detector on an in-memory video frame."""
+        try:
+            crops = self._face_crops(image)
+            if not crops:
+                return {"status": "inconclusive_no_face_detected", "prediction": "inconclusive", "faces": []}
+            faces = []
+            for index, (crop, box) in enumerate(crops):
+                result = self._predict_crop(crop, include_cam and index == 0)
+                result.update({"face_index": index, "bounding_box_xywh": box})
+                faces.append(result)
+            values = [face["scores"]["fake"] for face in faces]
+            median_fake = float(np.median(values))
+            prediction = "fake_signal" if median_fake >= FAKE_THRESHOLD else "real_signal" if median_fake <= REAL_THRESHOLD else "inconclusive"
+            return {
+                "status": "model_assessed", "model_name": MODEL_ID,
+                "prediction": prediction,
+                "scores": {"fake_median_across_detected_faces": round(median_fake, 5), "real_median_across_detected_faces": round(1 - median_fake, 5)},
+                "model_score_type": "median_softmax_score_not_calibrated_probability",
+                "uncertainty_band": _uncertainty_band(median_fake),
+                "faces": faces,
+                "note": "Face-crop research model signal; no calibrated forensic probability is provided."
+            }
+        except Exception as exc:
+            return {"status": "model_error", "model_name": MODEL_ID, "prediction": "inconclusive", "uncertainty_band": "unknown", "faces": [], "note": str(exc)}
 
     def analyze_image(self, path: Path, include_cam: bool = True) -> dict[str, Any]:
         try:
