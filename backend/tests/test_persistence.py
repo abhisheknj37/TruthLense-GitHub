@@ -16,6 +16,7 @@ def test_sha256_compare_match_mismatch_and_missing():
     assert compare_sha256("b" * 64, digest)["status"] == "mismatch"
     assert compare_sha256(None, digest)["status"] == "not_compared"
     assert compare_sha256("invalid", digest)["status"] == "invalid_client_digest"
+    assert compare_sha256(123, digest)["status"] == "invalid_client_digest"
 
 
 def test_report_activity_and_heatmap_are_persisted_per_user(tmp_path, monkeypatch):
