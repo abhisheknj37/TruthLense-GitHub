@@ -68,3 +68,8 @@ For a deployment that runs several model pipelines, point `TRUTHLENS_CALIBRATION
 
 ## Claim-to-source semantic review
 When OpenAlex returns an abstract, TruthLens can compare the extracted claim against the abstract using the optional local NLI checkpoint. Both premise directions are evaluated, and the report displays source metadata, available abstract excerpts and candidate entailment/contradiction/neutral scores. NLI scores are uncalibrated and trained on general English NLI datasets; they are not evidence that the cited source directly supports the claim. Review the paper, methods, date, population, and exact cited passage manually.
+
+
+## Source-group score evaluation
+
+Use `evaluate_scores.py` with `--group-column video_id` (or another independent source ID) to report both row-level metrics and source-level metrics. Source-level scoring takes the median fake-direction score within each group so a video with many frames does not dominate a test set. The same source identifier must cover every frame/window/crop derived from one original item. Groups with conflicting labels are rejected. Prefer source-level metrics when presenting detector performance to evaluators.
