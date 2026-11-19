@@ -144,7 +144,7 @@ def test_ocr_quality_gate_excludes_symbol_heavy_gibberish():
 
     assert gate["analysis_eligible"] is False
     assert gate["analysis_text"] == ""
-    assert gate["analysis_gate"]["observed_meaningful_token_count"] < 2
+    assert gate["analysis_gate"]["observed_meaningful_token_ratio"] < 0.4
 
 
 def test_ocr_quality_gate_keeps_clear_sentence():
