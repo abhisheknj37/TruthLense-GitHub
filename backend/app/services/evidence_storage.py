@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 import os
 import re
@@ -77,6 +78,18 @@ def store_original(
     except ValueError:
         days = 30
     now = datetime.now(timezone.utc)
+    manifest = {
+        "storage_key": relative.as_posix(),
+        "sha256": actual,
+        "stored_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=days)).isoformat(),
+    }
+    manifest_path = destination.with_name(destination.name + ".meta.json")
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    try:
+        manifest_path.chmod(0o600)
+    except OSError:
+        pass
     return {
         "status": "retained",
         "storage_key": relative.as_posix(),
@@ -109,6 +122,7 @@ def resolve_original(uid: str, report_id: str, asset: dict[str, Any]) -> tuple[P
             expiry = expiry.replace(tzinfo=timezone.utc)
         if expiry <= datetime.now(timezone.utc):
             path.unlink(missing_ok=True)
+            path.with_name(path.name + ".meta.json").unlink(missing_ok=True)
             return None, "expired"
         if not path.is_file():
             return None, "missing"
@@ -130,13 +144,30 @@ def delete_case_originals(uid: str, report_id: str) -> None:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def purge_expired_originals() -> dict[str, int]:
+def purge_expired_originals(uid: str) -> dict[str, int]:
+    """Purge expired originals only from the authenticated owner's namespace."""
     root = _root()
+    owner_root = (root / _owner(uid)).resolve()
+    if not owner_root.is_relative_to(root) or not owner_root.exists():
+        return {"manifests_checked": 0, "expired_originals_removed": 0}
     checked = removed = 0
     now = datetime.now(timezone.utc)
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix == ".tmp":
-            continue
+    for manifest_path in owner_root.rglob("*.meta.json"):
         checked += 1
-        # Expiry is also checked at authenticated download; bulk purge is intentionally conservative.
-    return {"files_checked": checked, "expired_originals_removed": removed}
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            expiry = datetime.fromisoformat(str(manifest["expires_at"]))
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            if expiry > now:
+                continue
+            relative = Path(str(manifest["storage_key"]))
+            candidate = (root / relative).resolve()
+            if not candidate.is_relative_to(owner_root):
+                continue
+            candidate.unlink(missing_ok=True)
+            manifest_path.unlink(missing_ok=True)
+            removed += 1
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            continue
+    return {"manifests_checked": checked, "expired_originals_removed": removed}

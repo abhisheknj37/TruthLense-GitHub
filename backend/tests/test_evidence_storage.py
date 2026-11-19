@@ -69,3 +69,32 @@ def test_delete_case_originals_removes_owner_case_folder(tmp_path, monkeypatch):
     path, state = evidence_storage.resolve_original("owner", report_id, asset)
     assert path is None
     assert state == "missing"
+
+
+def test_expired_originals_are_purged_for_owner_only(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("TRUTHLENS_ORIGINALS_DIR", str(tmp_path / "private"))
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"expire this")
+    digest = evidence_storage.sha256_file(source)
+    report_id = "12345678-1234-1234-1234-123456789abc"
+    asset_id = "abcdef12-1234-1234-1234-123456789abc"
+    saved = evidence_storage.store_original(
+        source, uid="owner-a", report_id=report_id, asset_id=asset_id,
+        filename="sample.bin", digest=digest, retain=True,
+    )
+    root = evidence_storage._root()
+    stored = root / saved["storage_key"]
+    sidecar = stored.with_name(stored.name + ".meta.json")
+    manifest = json.loads(sidecar.read_text(encoding="utf-8"))
+    manifest["expires_at"] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    sidecar.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = evidence_storage.purge_expired_originals("owner-a")
+    assert result["manifests_checked"] == 1
+    assert result["expired_originals_removed"] == 1
+    assert not stored.exists()
+    assert not sidecar.exists()
+    assert evidence_storage.purge_expired_originals("owner-b")["expired_originals_removed"] == 0
