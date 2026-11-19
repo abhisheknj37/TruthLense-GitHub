@@ -323,6 +323,9 @@ async def analyze_case(
             report=report.model_dump(mode="json"),
             case_title=title,
         )
+    except SupabasePersistenceError as exc:
+        delete_case_events(report_id, str(current_user["uid"]))
+        raise HTTPException(status_code=503, detail=f"Local case persistence was not completed because Supabase cloud sync failed: {exc}") from exc
     except Exception as exc:
         delete_case_events(report_id, str(current_user["uid"]))
         raise HTTPException(
