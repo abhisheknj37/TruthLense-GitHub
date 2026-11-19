@@ -14,7 +14,7 @@ import {
   signInEmail, signInGoogle, signOutUser
 } from "./firebase";
 
-const API = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(new RegExp("/+$"), "");
 const STORAGE_KEY = "truthlens.saved-investigations.v1";
 const MAX_FILES = 8;
 const MAX_BYTES = 40 * 1024 * 1024;
@@ -544,11 +544,16 @@ export default function App() {
       setActivityError("");
       setApiStatus("online");
     } catch (err) {
-      setActivityError(err.response?.data?.detail
-        || (!err.response
-          ? `No response from ${API}. Start the FastAPI backend and verify VITE_API_URL.`
-          : err.message || "Could not load server activity."));
-      setApiStatus("offline");
+      if (err.response) {
+        setApiStatus("online");
+        const detail = err.response.data?.detail || err.message || "The API returned an error.";
+        setActivityError(`API responded with HTTP ${err.response.status}: ${detail}`);
+        setApiMessage("The backend is reachable; check Firebase Admin authentication or the endpoint response.");
+      } else {
+        setApiStatus("offline");
+        setActivityError(`No response from ${API}. Start the FastAPI backend and verify VITE_API_URL and the browser CORS origin.`);
+        setApiMessage("No HTTP response was received from the TruthLens API.");
+      }
     } finally {
       setActivityLoading(false);
     }
@@ -705,10 +710,13 @@ export default function App() {
       setApiStatus("online");
       setApiMessage("Backend is healthy and Firebase identity was verified.");
     } catch (err) {
-      setApiStatus("offline");
-      setApiMessage(err.response
-        ? `Backend is reachable, but authentication failed (${err.response.status}): ${err.response.data?.detail || err.message}`
-        : `Backend health is reachable, but the authenticated API request failed. Check browser CORS settings for ${API}.`);
+      if (err.response) {
+        setApiStatus("online");
+        setApiMessage(`Backend is reachable, but authentication/API configuration returned HTTP ${err.response.status}: ${err.response.data?.detail || err.message}`);
+      } else {
+        setApiStatus("offline");
+        setApiMessage(`Backend health responded, but the authenticated request received no response. Check CORS for ${API} and refresh your Firebase sign-in.`);
+      }
     }
   }
   function newInvestigation() {
