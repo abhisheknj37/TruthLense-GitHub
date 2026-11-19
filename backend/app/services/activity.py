@@ -119,6 +119,11 @@ def save_report_and_activity(
             "size_bytes": int(asset.get("size_bytes") or 0),
             "sha256": str(asset.get("sha256") or ""),
             "analysis_status": str(asset.get("analysis_status") or "inconclusive"),
+            "prediction": str(
+                (asset.get("video_analysis") or {}).get("prediction")
+                or (asset.get("model_assessment") or {}).get("prediction")
+                or "inconclusive"
+            ),
             "integrity_verification": verification,
             "heatmap_faces": face_summary,
         })
@@ -226,3 +231,28 @@ def get_user_heatmap_path(user_uid: str, report_id: str, asset_id: str, face_ind
         ).fetchone()
     path = Path(row["file_path"]) if row else None
     return path if path and path.is_file() else None
+
+
+def delete_user_report(user_uid: str, report_id: str) -> bool:
+    """Delete one report, its activity record, and heatmap artifacts for its owner."""
+    with _connect() as connection:
+        rows = connection.execute(
+            """SELECT file_path FROM report_heatmaps
+               WHERE user_uid = ? AND report_id = ?""",
+            (user_uid, report_id),
+        ).fetchall()
+        existing = connection.execute(
+            "SELECT 1 FROM case_reports WHERE user_uid = ? AND report_id = ?",
+            (user_uid, report_id),
+        ).fetchone()
+        if existing is None:
+            return False
+        connection.execute("DELETE FROM report_heatmaps WHERE user_uid = ? AND report_id = ?", (user_uid, report_id))
+        connection.execute("DELETE FROM investigation_activity WHERE user_uid = ? AND report_id = ?", (user_uid, report_id))
+        connection.execute("DELETE FROM case_reports WHERE user_uid = ? AND report_id = ?", (user_uid, report_id))
+    for row in rows:
+        try:
+            Path(row["file_path"]).unlink(missing_ok=True)
+        except OSError:
+            pass
+    return True
