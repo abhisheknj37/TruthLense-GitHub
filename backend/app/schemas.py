@@ -22,6 +22,7 @@ class AssetResult(BaseModel):
     filename: str
     media_type: str
     size_bytes: int
+    sha256: str
     analysis_status: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     observations: list[Observation] = Field(default_factory=list)
