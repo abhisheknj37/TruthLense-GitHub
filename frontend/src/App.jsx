@@ -209,8 +209,12 @@ function Pipeline({ loading, uploadProgress, report }) {
     ["Evidence correlation", "Compare paired media model signals"],
     ["Human review & reporting", "Review findings, limitations and export"]
   ];
+  const reviewProgress = report ? getInvestigatorReviewProgress(report) : null;
   const stateFor = (index) => {
-    if (report) return index < 3 ? "complete" : "review";
+    if (report) {
+      if (index < 3) return "complete";
+      return reviewProgress?.complete ? "complete" : "review";
+    }
     if (!loading) return "waiting";
     if (index === 0) return uploadProgress >= 100 ? "complete" : "active";
     if (index === 1) return uploadProgress >= 100 ? "active" : "waiting";
@@ -224,7 +228,7 @@ function Pipeline({ loading, uploadProgress, report }) {
           <span className="step-state">{state === "complete" ? <Check size={13} /> : state === "active" ? <LoaderCircle className="spin" size={13} /> : state === "review" ? <Clock3 size={13} /> : <span className="state-dot" />}</span>
         </div>
         <b>{title}</b><small>{description}</small>
-        <span className="state-label">{state === "complete" ? "Completed" : state === "active" ? "In progress" : state === "review" ? "Awaiting analyst" : "Queued"}</span>
+        <span className="state-label">{state === "complete" ? "Completed" : state === "active" ? "In progress" : state === "review" ? (reviewProgress?.total ? "Review pending" : "Review available") : "Queued"}</span>
       </div>;
     })}
   </div>;
