@@ -128,21 +128,33 @@ function exportPdf(report) {
   const tableRows = (items) => Object.entries(items || {}).filter(([, value]) =>
     ["string", "number", "boolean"].includes(typeof value) || value === null
   ).map(([key, value]) => "<tr><th>" + esc(titleCase(key)) + "</th><td>" + esc(safeValue(key, value)) + "</td></tr>").join("");
+  const renderNested = (value) => {
+    if (Array.isArray(value)) {
+      if (!value.length) return "<span class='empty'>None recorded</span>";
+      return "<ul class='nested-list'>" + value.map((item) => "<li>" + renderNested(item) + "</li>").join("") + "</ul>";
+    }
+    if (value && typeof value === "object") return objectTable(value);
+    return esc(safeValue("", value));
+  };
   const objectTable = (object) => {
     if (!object || typeof object !== "object" || Array.isArray(object)) return "<p class='empty'>No structured details available.</p>";
-    const rows = Object.entries(object).map(([key, value]) => {
-      const display = value && typeof value === "object"
-        ? "<pre>" + esc(JSON.stringify(value, null, 2)) + "</pre>"
-        : esc(safeValue(key, value));
-      return "<tr><th>" + esc(titleCase(key)) + "</th><td>" + display + "</td></tr>";
-    }).join("");
+    const rows = Object.entries(object).map(([key, value]) =>
+      "<tr><th>" + esc(titleCase(key)) + "</th><td>" + renderNested(value) + "</td></tr>"
+    ).join("");
     return "<table class='data-table'>" + rows + "</table>";
+  };
+  const observationDetail = (asset, item) => {
+    const detail = String(item.detail || item.note || item.interpretation || "No detail supplied.");
+    if (asset.media_type === "video" && /from\s+-\d+\s+reported frames/i.test(detail)) {
+      return "The stored report contains an invalid negative container frame count. This older case was not re-decoded; re-upload the original video to obtain a sequentially decoded frame count.";
+    }
+    return detail;
   };
   const observationList = (asset) => (asset.observations || []).length
     ? "<div class='finding-list'>" + asset.observations.map((item) =>
       "<div class='finding'><div class='finding-head'><b>" + esc(item.title || item.code || "Observation") +
       "</b><span class='tag " + esc(item.severity || "info") + "'>" + esc(titleCase(item.severity || "info")) +
-      "</span></div><p>" + esc(item.detail || item.note || item.interpretation || "No detail supplied.") + "</p></div>"
+      "</span></div><p>" + esc(observationDetail(asset, item)) + "</p></div>"
     ).join("") + "</div>"
     : "<p class='empty'>No structured observations were returned for this evidence item.</p>";
   const assets = (report.assets || []).map((asset, index) => {
@@ -204,7 +216,7 @@ function exportPdf(report) {
     ".tag{display:inline-block;border-radius:12px;padding:2px 8px;font-size:8pt;font-weight:700;background:#e9eff5;color:#294968}.tag.warning{background:#fff2d9;color:#85520a}.tag.info{background:#e8f1fb;color:#24527c}.tag.confirmed{background:#e4f4e9;color:#21633a}.tag.rejected{background:#fbe8e8;color:#8a2c2c}.tag.inconclusive{background:#fff2d9;color:#85520a}" +
     ".finding{border:1px solid #e0e6ed;border-radius:5px;padding:9px 11px;margin:7px 0;break-inside:avoid}.finding-head{display:flex;justify-content:space-between;gap:10px}.finding p,.review-row p{margin:5px 0 0}" +
     ".hash-block{background:#f6f8fa;padding:10px;border-radius:5px;margin:10px 0}.hash-block code{display:block;margin:4px 0 9px}" +
-    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}" +
+    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}.nested-list{margin:3px 0;padding-left:18px}.nested-list li{margin:3px 0}" +
     "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
     ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
     ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
