@@ -11,9 +11,21 @@ _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 def compare_sha256(client_digest: str | None, server_digest: str) -> dict[str, Any]:
     """Compare a client pre-upload SHA-256 with the digest of received bytes."""
     server_value = (server_digest or "").strip().lower()
-    client_value = (client_digest or "").strip().lower()
     if not _SHA256_PATTERN.fullmatch(server_value):
         raise ValueError("The server SHA-256 digest is invalid.")
+    if client_digest is None or client_digest == "":
+        return {
+            "status": "not_compared",
+            "server_sha256": server_value,
+            "client_sha256": None,
+        }
+    if not isinstance(client_digest, str):
+        return {
+            "status": "invalid_client_digest",
+            "server_sha256": server_value,
+            "client_sha256": None,
+        }
+    client_value = client_digest.strip().lower()
     if not client_value:
         return {
             "status": "not_compared",
