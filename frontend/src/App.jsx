@@ -408,7 +408,29 @@ function ModelAssessment({ asset }) {
   </div>;
 }
 
-function EvidenceCard({ asset }) {
+function EvidenceCard({ asset, reportId, user }) {
+  const extraction = asset.text_extraction || {};
+  const [correctedText, setCorrectedText] = useState(extraction.investigator_correction?.text ?? extraction.text ?? "");
+  const [correctionStatus, setCorrectionStatus] = useState("");
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  async function saveCorrection() {
+    if (!user || !reportId || !asset.asset_id) return;
+    setSavingCorrection(true);
+    setCorrectionStatus("");
+    try {
+      const token = await user.getIdToken();
+      await axios.put(
+        API + "/api/reports/" + encodeURIComponent(reportId) + "/assets/" + encodeURIComponent(asset.asset_id) + "/ocr-correction",
+        { corrected_text: correctedText },
+        { headers: { Authorization: "Bearer " + token }, timeout: 15000 }
+      );
+      setCorrectionStatus("Correction saved with reviewer and timestamp. Raw OCR remains unchanged.");
+    } catch (error) {
+      setCorrectionStatus(error.response?.data?.detail || "Could not save correction.");
+    } finally {
+      setSavingCorrection(false);
+    }
+  }
   return <article className="evidence-card">
     <div className="asset-head"><span>{typeIcon(asset.media_type)} {String(asset.media_type).toUpperCase()} EVIDENCE</span><small>{formatBytes(asset.size_bytes)}</small></div>
     <h3>{asset.filename}</h3>
@@ -427,6 +449,18 @@ function EvidenceCard({ asset }) {
       <b>TEXT EXTRACTION · {String(asset.text_extraction.status || "unknown").toUpperCase()}</b>
       <span>{asset.text_extraction.note || "OCR / transcription status"}</span>
       {asset.text_extraction.text && <p className="extracted-text">{asset.text_extraction.text}</p>}
+      {asset.text_extraction.analysis_eligible === false && <small>Excluded from automated claim analysis by the OCR quality gate.</small>}
+      {asset.text_extraction.text && <div className="ocr-correction">
+        <label htmlFor={"ocr-correction-" + asset.asset_id}>Investigator-corrected text</label>
+        <textarea id={"ocr-correction-" + asset.asset_id} rows={5} maxLength={12000}
+          value={correctedText} onChange={(event) => setCorrectedText(event.target.value)}
+          placeholder="Correct the OCR text after checking the original evidence." />
+        <button className="button button-quiet" onClick={saveCorrection} disabled={savingCorrection || !user}>
+          {savingCorrection ? "Saving…" : "Save human correction"}
+        </button>
+        {correctionStatus && <small role="status">{correctionStatus}</small>}
+        {asset.text_extraction.investigator_correction?.updated_at && <small>Last saved: {formatDate(asset.text_extraction.investigator_correction.updated_at)}</small>}
+      </div>}
       {(asset.text_extraction.frames || []).map((frame, index) => <p key={index}><b>{frame.timestamp_seconds ?? "—"}s:</b> {frame.text}</p>)}
     </div>}
     <ModelAssessment asset={asset} />
@@ -590,7 +624,7 @@ function ReportView({ report, onJson, onPdf, user, onReviewsChange }) {
       </div>
     </div>
     <div className="evidence-heading"><div><span className="section-kicker">EVIDENCE REGISTER</span><h3>Asset-by-asset findings</h3></div><span>{report.assets.length} evidence items</span></div>
-    <div className="asset-grid">{report.assets.map((asset) => <EvidenceCard key={asset.asset_id} asset={asset} />)}</div>
+    <div className="asset-grid">{report.assets.map((asset) => <EvidenceCard key={asset.asset_id} asset={asset} reportId={report.report_id} user={user} />)}</div>
     <InvestigatorReview report={report} user={user} onChange={onReviewsChange} />
     {report.cross_modal_review?.length > 0 && <div className="cross-review">
       <div className="cross-header"><div><span className="section-kicker">RELATIONSHIP REVIEW</span><h3>Cross-modal comparison</h3></div><span className="model-pill pending">No fused authenticity score</span></div>
