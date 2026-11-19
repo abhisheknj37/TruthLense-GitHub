@@ -197,7 +197,7 @@ export default function App() {
                     <div key={key}><small>{key.replaceAll("_", " ")}</small><b>{String(value)}</b></div>
                   ))}
                 </div>
-                <div className="model-state"><span className="state-dot" /> MODEL NOT CONFIGURED</div>
+                <div className="hash-line"><small>SHA-256 EVIDENCE FINGERPRINT</small><code>{asset.sha256}</code></div><div className="model-state"><span className="state-dot" /> MODEL NOT CONFIGURED</div>
                 {asset.observations.map((item) => <div className="observation" key={item.code}><CheckCircle2 size={16} /><div><b>{item.title}</b><p>{item.detail}</p></div></div>)}
                 {asset.sampled_frames?.length > 0 && (
                   <div className="frames"><b>Sampled frames</b><div>{asset.sampled_frames.map((frame) => <span key={frame.frame_index}>#{frame.frame_index} · {frame.timestamp_seconds ?? "—"}s</span>)}</div></div>
