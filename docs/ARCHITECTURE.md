@@ -11,7 +11,7 @@ TruthLens separates technical observations, model outputs and human conclusions.
 - The implementation reads the checkpoint's \`id2label\` mapping instead of assuming the class order.
 - Output contains per-face real/fake softmax scores, a median summary, a heuristic inconclusive band and an optional transformer patch-attribution overlay.
 
-**Scope:** the checkpoint is described as a face-cropped real/fake image classifier trained from OpenForensics-derived data. It is a research/educational model, not a validated forensic service. Images with no detected face remain inconclusive.
+**Scope:** the checkpoint is described as a face-cropped real/fake image classifier trained from OpenForensics-derived data. It is a research/educational model, not a validated forensic service. If no face is detected, that face-model path is inconclusive; the API may try a separate whole-image AI-art checkpoint with a narrower scope, but that output is not a general photograph-manipulation detector.
 
 ### Video
 - OpenCV reads the container metadata.

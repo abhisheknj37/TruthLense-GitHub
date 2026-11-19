@@ -88,7 +88,7 @@ Document uploads such as PDF, DOCX and XLSX are not supported by the current ana
 
 ## Safety and limitations
 
-- Image model is face-crop focused; a no-face image returns inconclusive.
+- The primary image model is face-crop focused. When no face is detected, the face model is inconclusive; a separate whole-image AI-art research checkpoint may be attempted, but it is not a general photograph-manipulation detector.
 - Video frame classification is sampled (up to 16 frames). Temporal optical-flow/scene-change indicators are heuristic review cues, not a trained temporal classifier. A custom temporal adapter remains disabled unless a compatible, separately validated checkpoint is supplied. Actual SyncNet inference requires optional configured weights/package/FFmpeg.
 - Audio results may not generalize beyond the model's limited training scope.
 - Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities. Evidence-aware uncertainty labels are heuristic. Approved calibrated estimates appear only if a model/pipeline-specific, source-group validated artifact has been reviewed and enabled; no validation dataset or approved artifact is bundled.

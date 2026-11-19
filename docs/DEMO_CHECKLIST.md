@@ -22,7 +22,7 @@
 ## Presentation language
 - Say "model signal", not "proof", "certain" or "verified fake".
 - The 0.35 / 0.65 thresholds are heuristic score bands, not calibrated confidence boundaries.
-- The image model is face-crop focused; a no-face image remains inconclusive.
+- The primary image model is face-crop focused. If no face is detected, explain that the face-model path is inconclusive; a separate whole-image AI-art research fallback may run, but it is not a general photograph-manipulation detector.
 - The video pipeline samples frames; it is not a temporal or lip-sync detector.
 - The audio model's model card describes a multi-ethnic English training set and says more data are needed. Its synthetic/spoof-direction indicator is not speaker identification and does not prove voice cloning. Do not generalize it to all languages, codecs, generators or noisy recordings.
 - Text-source overlap is lexical triage only. Shared wording does not establish agreement or truth; low overlap does not establish contradiction. Review the original image, frames, audio and primary sources.

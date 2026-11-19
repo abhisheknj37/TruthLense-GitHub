@@ -51,7 +51,7 @@ python evaluate_scores.py labelled_scores.csv --threshold 0.65 --output evaluati
 python evaluate_calibration.py labelled_scores.csv --output calibration-results.json
 ```
 
-The score evaluator reports metrics for the supplied labels and threshold. The calibration utility aggregates to one median score per source group, rejects groups with conflicting labels, performs a source-disjoint fit/held-out split and evaluates an unapproved candidate mapping. Shuffle and split by independent source/video/person before using it; a random row split can leak near-duplicate material. These utilities do not automatically alter or calibrate the deployed model outputs. No benchmark dataset or calibration results are bundled.
+The score evaluator reports row-level metrics and, with `--group-column`, source-level metrics using one median score per source. The calibration utility requires `label,score,group_id`, aggregates to one median score per source group, rejects conflicting labels, performs a source-disjoint fit/held-out split and evaluates an unapproved candidate mapping. At least 60 independent source groups are required. These utilities do not automatically alter or calibrate deployed model outputs. No benchmark dataset or calibration results are bundled.
 
 ## Optional dependencies
 
@@ -83,7 +83,7 @@ Install the system Tesseract and FFmpeg executables separately where applicable.
    ```
 5. Restart FastAPI and run a new investigation. Existing reports are not reprocessed automatically.
 
-TruthLens checks both the executable and each requested language code. OCR returns `engine_not_found` or `language_data_missing` with a clear note when setup is incomplete. Add another language only after its matching traineddata is installed, for example `eng+hin`. OCR output is best-effort text extraction and must be checked against the source image/frame.
+TruthLens checks both the executable and each requested language code. When Tesseract is unavailable, RapidOCR can serve as a fallback if installed; its result is marked unscored and is not treated as a second independent engine. Missing language traineddata is reported explicitly. Add another language only after its matching traineddata is installed, for example `eng+hin`. OCR output is best-effort text extraction and must be checked against the source image/frame.
 
 ## Windows optional-integration configuration
 
@@ -127,7 +127,7 @@ The current C2PA adapter supports JPEG, PNG, WebP, MP4 and MOV inputs only. WebM
 
 ## Temporal model selection note
 
-Do not point `TRUTHLENS_TEMPORAL_MODEL` at an arbitrary `.pt` or `.pth` file. The current optional adapter expects a TorchScript model accepting RGB float32 input shaped `[1,T,3,224,224]` and currently reads its first scalar output as a raw fake score. A model with a different architecture, frame sampling, normalization, output layout or label order is incompatible even if it is described as a video deepfake detector. Before integrating a checkpoint, verify its source, model card/paper, weights license, inference code, preprocessing, label mapping, supported video domain and independent cross-dataset evaluation. Keep it disabled until an adapter and tests match the exact checkpoint contract.
+Do not point `TRUTHLENS_TEMPORAL_MODEL` at an arbitrary `.pt` or `.pth` file. The current optional adapter expects a TorchScript model accepting RGB float32 input shaped `[1,T,3,224,224]` and requires exactly one scalar output. It reports that value as an unverified raw model output; it does not infer a class or probability from its numeric range. A model with a different architecture, frame sampling, normalization, output layout or label order is incompatible even if it is described as a video deepfake detector. Before integrating a checkpoint, verify its source, model card/paper, weights license, inference code, preprocessing, label mapping, supported video domain and independent cross-dataset evaluation. Keep it disabled until an adapter and tests match the exact checkpoint contract.
 
 A current candidate reviewed during development, FakeSTormer, is the official ICCV 2025 implementation and reports cross-dataset video-level AUC results, but its repository specifies an SNT academic license and an older CUDA/PyTorch/MMCV stack. It is not automatically suitable for inclusion in this project or a general Windows CPU deployment. Obtain permission/confirm intended-use terms and build a separately tested adapter before adoption. Its reported benchmark values are the authors' results, not TruthLens results.
 
