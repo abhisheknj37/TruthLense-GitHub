@@ -30,4 +30,8 @@ def root():
 
 @app.get("/health", tags=["health"])
 def health():
-    return {"status": "healthy", "ml_models": "not_configured"}
+    return {
+        "status": "healthy",
+        "ml_models": "lazy_loaded_on_first_analysis",
+        "note": "Check /api/capabilities for configured model identifiers. Health does not imply model weights are downloaded or ready.",
+    }
