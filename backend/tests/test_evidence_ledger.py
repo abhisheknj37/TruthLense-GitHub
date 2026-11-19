@@ -11,3 +11,12 @@ def test_append_and_verify_hash_chain(tmp_path, monkeypatch):
     assert len(events) == 3
     assert evidence_ledger.verify_case_chain("case-test")["status"] == "valid"
     assert len(evidence_ledger.get_case_events("case-test")) == 3
+
+
+def test_evidence_ledger_postgres_is_opt_in(monkeypatch):
+    from app.services.database import is_postgres_enabled
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert is_postgres_enabled() is False
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example")
+    assert is_postgres_enabled() is True

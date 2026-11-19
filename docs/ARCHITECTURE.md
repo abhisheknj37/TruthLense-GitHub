@@ -48,3 +48,7 @@ Models are loaded lazily on first use and cached in process memory. The first ca
 
 ## Public deployment hardening
 The local hackathon MVP needs isolated media workers, process-level CPU/memory/time limits, stronger content validation, authentication, rate limiting, private storage and deletion policies before public exposure. Do not allow uploaded media to execute.
+
+## Supabase persistence
+
+When `DATABASE_URL` is configured, the FastAPI backend stores reports, normalized assets, activity, heatmaps and hash-linked chain-of-custody events in Supabase PostgreSQL. Original media is retained in the private `truthlens-evidence` Storage bucket when `SUPABASE_URL` and the backend-only `SUPABASE_SERVICE_ROLE_KEY` are configured. Firebase Auth remains the user identity provider. Local development without these settings retains SQLite. See [SUPABASE_SETUP.md](SUPABASE_SETUP.md).

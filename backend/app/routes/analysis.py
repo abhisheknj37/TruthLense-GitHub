@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import mimetypes
 from pathlib import Path
 import tempfile
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
 from app.auth import get_current_user
@@ -19,7 +20,8 @@ from app.detectors.video import VideoDeepfakeAnalyzer
 from app.schemas import AssetResult, CaseReport, Observation
 from app.services.activity import (
     get_user_activity_summary,
-    get_user_heatmap_path,
+    get_user_heatmap_bytes,
+    get_user_original_info,
     delete_user_report,
     get_user_report,
     list_user_activity,
@@ -37,6 +39,8 @@ from app.services.evidence_ledger import append_case_events, get_case_events, ve
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
+from app.services.database import is_postgres_enabled
+from app.services.storage import upload_original_media, download_original_media, storage_is_configured
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -177,8 +181,17 @@ async def analyze_case(
                     severity="warning",
                 ))
 
+            asset_id = str(uuid4())
+            storage_path = upload_original_media(
+                temporary_path,
+                owner_uid=str(current_user["uid"]),
+                asset_id=asset_id,
+                filename=filename,
+                content_type=(upload.content_type if upload.content_type and upload.content_type != "application/octet-stream"
+                              else mimetypes.guess_type(filename)[0] or "application/octet-stream"),
+            )
             assets.append(AssetResult(
-                asset_id=str(uuid4()),
+                asset_id=asset_id,
                 filename=filename,
                 media_type=result["media_type"],
                 size_bytes=size,
@@ -193,6 +206,7 @@ async def analyze_case(
                 forensic_parameters=result.get("forensic_parameters", {}),
                 provenance=provenance,
                 text_extraction=text_extraction,
+                storage_path=storage_path,
             ))
         except MediaError as exc:
             for retained in retained_paths.values():
@@ -315,20 +329,20 @@ async def analyze_case(
 
 @router.get("/cases/{report_id}/chain-of-custody")
 def case_chain_of_custody(report_id: str, current_user: dict = Depends(get_current_user)):
-    events = get_case_events(report_id)
     uid = str(current_user.get("uid", ""))
+    events = get_case_events(report_id, uid)
     if events and any(event.get("owner_uid") not in (None, uid) for event in events):
         raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
-    return {"report_id": report_id, "events": events, "verification": verify_case_chain(report_id)}
+    return {"report_id": report_id, "events": events, "verification": verify_case_chain(report_id, uid)}
 
 
 @router.get("/cases/{report_id}/chain-of-custody/verify")
 def verify_case_chain_endpoint(report_id: str, current_user: dict = Depends(get_current_user)):
-    events = get_case_events(report_id)
     uid = str(current_user.get("uid", ""))
+    events = get_case_events(report_id, uid)
     if events and any(event.get("owner_uid") not in (None, uid) for event in events):
         raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
-    return verify_case_chain(report_id)
+    return verify_case_chain(report_id, uid)
 
 
 @router.post("/claims/verify")
@@ -383,10 +397,27 @@ def saved_heatmap(
     current_user: dict = Depends(get_current_user),
 ):
     """Stream one persisted model-attribution PNG after checking report ownership."""
-    path = get_user_heatmap_path(current_user["uid"], report_id, asset_id, face_index)
-    if path is None:
+    image_data = get_user_heatmap_bytes(current_user["uid"], report_id, asset_id, face_index)
+    if image_data is None:
         raise HTTPException(status_code=404, detail="No saved heatmap exists for this evidence item.")
-    return FileResponse(path, media_type="image/png", filename=f"truthlens-heatmap-{asset_id}-{face_index}.png")
+    return Response(content=image_data, media_type="image/png",
+                    headers={"Content-Disposition": 'inline; filename="truthlens-heatmap.png"'})
+
+
+@router.get("/reports/{report_id}/assets/{asset_id}/original")
+def saved_original(report_id: str, asset_id: str, current_user: dict = Depends(get_current_user)):
+    """Stream original evidence only after checking the Firebase UID owner."""
+    info = get_user_original_info(current_user["uid"], report_id, asset_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="No retained original evidence exists for this item.")
+    try:
+        content = download_original_media(info["storage_path"])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="The private evidence object could not be retrieved.") from exc
+    safe_name = Path(info["filename"]).name.replace('"', "").replace("\\r", "").replace("\\n", "")
+    media_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    return Response(content=content, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{safe_name}"'})
 
 
 @router.get("/me", tags=["authentication"])
@@ -399,13 +430,17 @@ def current_user_profile(current_user: dict = Depends(get_current_user)):
 def capabilities():
     return {
         "optional_integration_status": get_optional_integration_status(),
+        "persistence": {
+            "database": "supabase_postgresql" if is_postgres_enabled() else "local_sqlite",
+            "original_evidence_storage": "supabase_private_bucket" if storage_is_configured() else "not_configured",
+        },
         "advanced_forensics": {
             "temporal_video": "Optical-flow and scene-change review cues; heuristic only",
             "face_consistency": "Optional InsightFace; requires model weights",
             "lip_sync": "Optional SyncNet; requires compatible checkpoint, package and FFmpeg",
             "c2pa": "Optional c2pa-python validation; configure trust anchors",
             "claim_research": "OpenAlex scholarly candidate discovery; no automatic truth verdict",
-            "evidence_ledger": "Local SQLite hash-linked event history; not externally anchored",
+            "evidence_ledger": "Supabase PostgreSQL hash-linked event history when configured; no external timestamp anchoring",
             "ocr": "Optional pytesseract and Tesseract executable",
             "transcription": "Optional ASR model configured through TRUTHLENS_ASR_MODEL",
         },
@@ -442,6 +477,7 @@ def capabilities():
             "rule-based text triage and OpenAlex scholarly candidate discovery",
             "experimental audio/video activity-envelope alignment for confirmed pairs",
             "optional SyncNet synchronization review when model weights and FFmpeg are configured",
-            "local hash-linked chain-of-custody event history with verification endpoints",
+            "Supabase PostgreSQL hash-linked chain-of-custody events when configured, with local SQLite fallback",
+            "private original-evidence retention in the truthlens-evidence Storage bucket when configured",
         ],
     }
