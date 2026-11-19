@@ -74,15 +74,16 @@ def persist_case(report: dict[str, Any], firebase_uid: str, case_title: str) -> 
 
     try:
         with httpx.Client(timeout=25.0) as client:
-            for table, rows in (
-                ("truthlens_cases", [case]),
-                ("truthlens_assets", assets),
-                ("truthlens_evidence_events", events),
+            for table, rows, conflict_key in (
+                ("truthlens_cases", [case], "id"),
+                ("truthlens_assets", assets, "case_id,asset_id"),
+                ("truthlens_evidence_events", events, "event_hash"),
             ):
                 if not rows:
                     continue
                 response = client.post(
                     f"{base_url}/rest/v1/{table}",
+                    params={"on_conflict": conflict_key},
                     headers=headers,
                     json=rows,
                 )
@@ -91,7 +92,17 @@ def persist_case(report: dict[str, Any], firebase_uid: str, case_title: str) -> 
                         f"Supabase write to {table} failed with HTTP {response.status_code}."
                     )
     except httpx.HTTPError as exc:
+        try:
+            delete_case(report_id, firebase_uid)
+        except Exception:
+            pass
         raise SupabasePersistenceError("Could not reach Supabase while syncing the case.") from exc
+    except SupabasePersistenceError:
+        try:
+            delete_case(report_id, firebase_uid)
+        except Exception:
+            pass
+        raise
     return True
 
 
