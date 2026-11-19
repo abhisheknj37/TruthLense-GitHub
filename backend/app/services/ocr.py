@@ -225,15 +225,26 @@ def _ocr_note(confidence: float | None) -> tuple[str, str]:
 def _ocr_analysis_gate(text: str, confidence: float | None, word_count: int) -> dict[str, Any]:
     visible = [char for char in text if not char.isspace()]
     ratio = sum(char.isalnum() for char in visible) / len(visible) if visible else 0.0
-    eligible = bool(text.strip() and confidence is not None and confidence >= 45 and word_count >= 3 and ratio >= 0.55)
+    tokens = re.findall(r"[A-Za-z]{3,}", text)
+    token_count = max(1, len(re.findall(r"\\S+", text)))
+    meaningful_token_ratio = len(tokens) / token_count
+    eligible = bool(
+        text.strip() and confidence is not None and confidence >= 45
+        and word_count >= 3 and ratio >= 0.65
+        and len(tokens) >= 2 and meaningful_token_ratio >= 0.4
+    )
     return {
         "analysis_text": text if eligible else "",
         "analysis_eligible": eligible,
         "analysis_gate": {
             "minimum_mean_word_confidence": 45,
             "minimum_word_count": 3,
-            "minimum_alphanumeric_ratio": 0.55,
+            "minimum_alphanumeric_ratio": 0.65,
+            "minimum_meaningful_token_count": 2,
+            "minimum_meaningful_token_ratio": 0.4,
             "observed_alphanumeric_ratio": round(ratio, 3),
+            "observed_meaningful_token_count": len(tokens),
+            "observed_meaningful_token_ratio": round(meaningful_token_ratio, 3),
         },
     }
 
