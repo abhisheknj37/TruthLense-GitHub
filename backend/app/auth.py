@@ -35,7 +35,7 @@ def _firebase_app() -> firebase_admin.App:
         elif service_path:
             path = Path(service_path)
             if not path.is_absolute():
-                path = Path(__file__).resolve().parents[2] / path
+                path = Path(__file__).resolve().parents[1] / path
             if not path.is_file():
                 raise RuntimeError(f"Firebase service-account file not found: {path}")
             credential = credentials.Certificate(str(path))
