@@ -293,7 +293,7 @@ function EvidenceCard({ asset }) {
     </div>}
     <ModelAssessment asset={asset} />
     {(asset.observations || []).map((item) => <div className="observation" key={item.code}>
-      <CheckCircle2 size={16} /><div><b>{item.title}</b><p>{item.detail}</p></div>
+      <CheckCircle2 size={16} /><div><b>{item.title}</b><p>{item.detail || item.note || item.interpretation || JSON.stringify(item)}</p></div>
     </div>)}
   </article>;
 }
