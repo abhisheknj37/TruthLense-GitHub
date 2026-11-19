@@ -312,6 +312,32 @@ async def analyze_case(
     return report
 
 
+@router.get("/cases/{report_id}/chain-of-custody")
+def case_chain_of_custody(report_id: str, current_user: dict = Depends(get_current_user)):
+    events = get_case_events(report_id)
+    uid = str(current_user.get("uid", ""))
+    if events and any(event.get("owner_uid") not in (None, uid) for event in events):
+        raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
+    return {"report_id": report_id, "events": events, "verification": verify_case_chain(report_id)}
+
+
+@router.get("/cases/{report_id}/chain-of-custody/verify")
+def verify_case_chain_endpoint(report_id: str, current_user: dict = Depends(get_current_user)):
+    events = get_case_events(report_id)
+    uid = str(current_user.get("uid", ""))
+    if events and any(event.get("owner_uid") not in (None, uid) for event in events):
+        raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
+    return verify_case_chain(report_id)
+
+
+@router.post("/claims/verify")
+async def verify_claims_endpoint(payload: dict, current_user: dict = Depends(get_current_user)):
+    text = str(payload.get("text", "")).strip()
+    if not text or len(text) > 20000:
+        raise HTTPException(status_code=400, detail="Provide claim text between 1 and 20,000 characters.")
+    return await verify_claims(text)
+
+
 @router.get("/activity")
 def activity_feed(
     limit: int = Query(default=20, ge=1, le=50),
@@ -371,6 +397,16 @@ def current_user_profile(current_user: dict = Depends(get_current_user)):
 @router.get("/capabilities")
 def capabilities():
     return {
+        "advanced_forensics": {
+            "temporal_video": "Optical-flow and scene-change review cues; heuristic only",
+            "face_consistency": "Optional InsightFace; requires model weights",
+            "lip_sync": "Optional SyncNet; requires compatible checkpoint, package and FFmpeg",
+            "c2pa": "Optional c2pa-python validation; configure trust anchors",
+            "claim_research": "OpenAlex scholarly candidate discovery; no automatic truth verdict",
+            "evidence_ledger": "Local SQLite hash-linked event history; not externally anchored",
+            "ocr": "Optional pytesseract and Tesseract executable",
+            "transcription": "Optional ASR model configured through TRUTHLENS_ASR_MODEL",
+        },
         "supported_inputs": {
             "image": [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"],
             "video": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
