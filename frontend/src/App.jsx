@@ -128,7 +128,7 @@ function exportPdf(report) {
   const tableRows = (items) => Object.entries(items || {}).filter(([, value]) =>
     ["string", "number", "boolean"].includes(typeof value) || value === null
   ).map(([key, value]) => "<tr><th>" + esc(titleCase(key)) + "</th><td>" + esc(safeValue(key, value)) + "</td></tr>").join("");
-  const renderOcr = (data) => {
+  const renderOcr = (data, mediaType) => {
     if (!data || typeof data !== "object") return "";
     const frames = Array.isArray(data.frames) ? data.frames : [];
     const previewText = (value) => {
@@ -137,8 +137,9 @@ function exportPdf(report) {
     };
     const rowFor = (frame) => {
       const confidence = frame.mean_word_confidence ?? frame.confidence;
-      return "<tr><td>" + esc(safeValue("timestamp", frame.timestamp_seconds)) + "</td><td>" +
-        esc(safeValue("frame", frame.frame_index)) + "</td><td class='ocr-text'>" + esc(previewText(frame.text)) +
+      return "<tr>" + (mediaType === "video" ? "<td>" + esc(safeValue("timestamp", frame.timestamp_seconds)) + "</td><td>" +
+        esc(safeValue("frame", frame.frame_index)) + "</td>" : "") +
+        "<td class='ocr-text'>" + esc(previewText(frame.text)) +
         "</td><td>" + esc(frame.engine || data.engine || "Not recorded") + "</td><td>" +
         esc(confidence == null ? "Not reported" : String(confidence) + (frame.confidence_level ? " · " + frame.confidence_level : "")) +
         "</td><td>" + (frame.analysis_eligible ? "Eligible" : "Excluded · review") + "</td></tr>";
@@ -154,14 +155,18 @@ function exportPdf(report) {
         esc(data.investigator_correction.reviewer_uid || "Not recorded") + " · Saved: " +
         humanDate(data.investigator_correction.updated_at) + "</p></div>" : "";
     const summary = "<p class='muted'>Machine OCR · " + esc(data.engine || "Engine not recorded") +
-      " · " + esc(data.languages || "Language not recorded") + " · " + frames.length + " sampled frame(s). " +
-      "Confidence is a recognition estimate, not an authenticity probability.</p>";
-    const tableHead = "<table class='data-table compact ocr-table'><thead><tr><th>Time (s)</th><th>Frame</th><th>Extracted text preview</th><th>Engine</th><th>Confidence</th><th>Analysis</th></tr></thead><tbody>";
+      " · " + esc(data.languages || "Language not recorded") + " · " +
+      (mediaType === "video" ? frames.length + " sampled frame(s)." : "Image text extraction.") +
+      " Confidence is a recognition estimate, not an authenticity probability.</p>";
+    const tableHead = "<table class='data-table compact ocr-table'><thead><tr>" +
+      (mediaType === "video" ? "<th>Time (s)</th><th>Frame</th>" : "") +
+      "<th>Extracted text preview</th><th>Engine</th><th>Confidence</th><th>Analysis</th></tr></thead><tbody>";
     const eligibleTable = eligibleRows ? "<h5>Eligible machine OCR · " + frames.filter((frame) => frame.analysis_eligible).length + "</h5>" + tableHead + eligibleRows + "</tbody></table>" : "";
     const reviewTable = reviewRows ? "<h5>Excluded / low-confidence OCR · human review only</h5>" + tableHead + reviewRows + "</tbody></table>" : "";
     const table = eligibleTable + reviewTable || (rows ? tableHead + rows + "</tbody></table>" : "<p class='empty'>No machine-readable OCR or transcription text was recorded.</p>");
     const low = frames.filter((frame) => !frame.analysis_eligible || frame.confidence_level === "low").length;
-    const quality = low ? "<p class='ocr-warning'>" + low + " sampled frame(s) are excluded from claim analysis or marked low confidence. Verify text against the original evidence.</p>" : "";
+    const quality = low ? "<p class='ocr-warning'>" + low + (mediaType === "video" ? " sampled frame(s)" : " OCR result(s)") +
+      " are excluded from claim analysis or marked low confidence. Verify text against the original evidence.</p>" : "";
     return "<h4>OCR / transcription review</h4>" + summary + quality + table + comparison + correction;
   };
   const renderTemporal = (data) => {
@@ -224,7 +229,7 @@ function exportPdf(report) {
     const extras = [
       asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h4>Image forensic measurements</h4>" + objectTable(asset.forensic_parameters) : "",
       Object.keys(provenance).length ? "<h4>Evidence provenance</h4>" + objectTable(provenance) : "",
-      asset.text_extraction ? renderOcr(asset.text_extraction) : "",
+      asset.text_extraction ? renderOcr(asset.text_extraction, asset.media_type) : "",
       asset.model_assessment?.audio_review_timeline ? "<h4>Audio review timeline</h4>" + objectTable(asset.model_assessment.audio_review_timeline) : "",
       asset.video_analysis?.temporal_forensics ? renderTemporal(asset.video_analysis.temporal_forensics) : "",
       asset.video_analysis?.face_identity_consistency ? "<h4>Face consistency review</h4>" + objectTable(asset.video_analysis.face_identity_consistency) : ""
@@ -254,10 +259,10 @@ function exportPdf(report) {
     ])
   ));
   const reviews = (report.investigator_reviews || []).length
-    ? "<p class='section-intro'>A decision confirms or rejects only the named technical finding. It does not establish media authenticity.</p><table class='data-table'><thead><tr><th>Finding</th><th>Decision</th><th>Analyst rationale</th><th>Reviewer</th><th>Updated</th></tr></thead><tbody>" +
+    ? "<p class='section-intro'>Each decision applies only to the named technical finding. A Confirmed decision does not confirm media authenticity or validate a model. Reviewer identity is included only when supplied by the review API.</p><table class='data-table review-table'><thead><tr><th>Technical finding</th><th>Finding decision</th><th>Analyst rationale</th><th>Reviewer (if supplied)</th><th>Updated</th></tr></thead><tbody>" +
       report.investigator_reviews.map((item) => "<tr><td>" + esc(findingTitles.get(item.finding_id) || item.finding_id || "Unmatched finding") + "<br><code>" + esc(item.finding_id || "") + "</code></td><td><span class='tag " +
       esc(item.status) + "'>" + esc(titleCase(item.status)) + "</span></td><td>" + esc(item.comment || "No analyst rationale recorded") +
-      "</td><td>Not exposed by review API</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
+      "</td><td>" + esc(item.reviewer_name || item.reviewer_email || item.reviewer_uid || "Not supplied by API") + "</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
     : "<p class='empty'>No saved investigator decisions were available at export time.</p>";
   const events = (report.evidence_events || []).length
     ? "<table class='data-table'><thead><tr><th>Event</th><th>Details</th><th>Timestamp</th><th>Event hash</th></tr></thead><tbody>" +
@@ -266,7 +271,8 @@ function exportPdf(report) {
       "</td><td><code>" + esc(item.event_hash || "Not recorded") + "</code></td></tr>").join("") +
       "</tbody></table>"
     : "<p class='empty'>No evidence events were recorded.</p>";
-  const limitations = (report.limitations || []).map((item) => "<li>" + esc(item) + "</li>").join("");\n  const technicalAppendix = (report.assets || []).map((asset) => {
+  const limitations = (report.limitations || []).map((item) => "<li>" + esc(item) + "</li>").join("");
+  const technicalAppendix = (report.assets || []).map((asset) => {
     const ocr = asset.text_extraction || {};
     const frames = Array.isArray(ocr.frames) ? ocr.frames : [];
     const temporal = asset.video_analysis?.temporal_forensics || {};
@@ -301,7 +307,7 @@ function exportPdf(report) {
     ".tag{display:inline-block;border-radius:12px;padding:2px 8px;font-size:8pt;font-weight:700;background:#e9eff5;color:#294968}.tag.warning{background:#fff2d9;color:#85520a}.tag.info{background:#e8f1fb;color:#24527c}.tag.confirmed{background:#e4f4e9;color:#21633a}.tag.rejected{background:#fbe8e8;color:#8a2c2c}.tag.inconclusive{background:#fff2d9;color:#85520a}" +
     ".finding{border:1px solid #e0e6ed;border-radius:5px;padding:9px 11px;margin:7px 0;break-inside:avoid}.finding-head{display:flex;justify-content:space-between;gap:10px}.finding p,.review-row p{margin:5px 0 0}" +
     ".hash-block{background:#f6f8fa;padding:10px;border-radius:5px;margin:10px 0}.hash-block code{display:block;margin:4px 0 9px}" +
-    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}.data-table.compact th,.data-table.compact td{padding:4px 6px;font-size:8pt}.data-table.compact th{width:auto}.nested-list{margin:3px 0;padding-left:18px}.nested-list li{margin:3px 0}" +
+    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}.data-table .data-table{table-layout:auto;width:100%;margin:3px 0 5px}.data-table .data-table th{width:38%;white-space:normal}.data-table .data-table td{width:62%}.review-table{table-layout:auto}.review-table th{width:auto}.review-table td:nth-child(2){font-weight:700}.review-table .tag.confirmed{background:#e8eef5;color:#294968}.data-table.compact th,.data-table.compact td{padding:4px 6px;font-size:8pt}.data-table.compact th{width:auto}.nested-list{margin:3px 0;padding-left:18px}.nested-list li{margin:3px 0}" +
     "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
     ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
     ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.human-correction{border:1px solid #9aaec3;background:#f4f7fa;border-radius:6px;padding:12px;margin:12px 0;break-inside:avoid}.human-correction h4{margin-top:0}.human-correction pre{white-space:pre-wrap;overflow-wrap:anywhere}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
