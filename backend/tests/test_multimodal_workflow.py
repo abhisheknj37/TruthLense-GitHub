@@ -141,6 +141,7 @@ def test_full_case_upload_compares_image_video_audio_and_claim_sources(monkeypat
                     "context_text": "The city bridge reopened after inspection.",
                     "case_title": "Multimodal source comparison fixture",
                     "pair_media": "true",
+                    "retain_originals": "false",
                     "sha256_digests": json.dumps(digests),
                 },
                 files=files,

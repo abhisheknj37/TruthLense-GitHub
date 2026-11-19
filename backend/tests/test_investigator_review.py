@@ -31,8 +31,11 @@ def test_finding_review_api_is_authenticated_owner_scoped_and_validates_finding(
     from app.auth import get_current_user
     from app.main import app
     from app.routes import analysis as analysis_module
+    from app.services import evidence_ledger
 
     monkeypatch.setattr(reviews, "DB_PATH", tmp_path / "api-reviews.sqlite3")
+    monkeypatch.setattr(evidence_ledger, "DB_PATH", tmp_path / "api-ledger.sqlite3")
+    evidence_ledger.append_case_events("case-api", [], "owner")
     report = {
         "report_id": "case-api",
         "assets": [{

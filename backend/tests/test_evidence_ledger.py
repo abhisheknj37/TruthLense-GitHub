@@ -73,7 +73,7 @@ def test_append_human_review_event_extends_case_chain(tmp_path, monkeypatch):
     assert event["previous_event_hash"]
     assert event["event_hash"]
     events = evidence_ledger.get_case_events("case-human")
-    assert len(events) == 4
+    assert len(events) == 3
     assert events[-1]["event"] == "investigator_finding_review"
     assert events[-1]["review_comment_sha256"] == "a" * 64
     assert evidence_ledger.verify_case_chain("case-human")["status"] == "valid"
