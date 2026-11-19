@@ -121,3 +121,59 @@ def test_c2pa_unexpected_reader_error_remains_verification_error(monkeypatch, tm
 
     assert result["status"] == "verification_error"
     assert "native validator crashed" in result["detail"]
+
+
+def test_temporal_torchscript_output_is_not_assumed_to_be_probability(tmp_path, monkeypatch):
+    import torch
+    import numpy as np
+    from app.services import advanced_forensics, media
+
+    class ScalarModel(torch.nn.Module):
+        def forward(self, value):
+            return value.mean().reshape(1)
+
+    model_path = tmp_path / "temporal.pt"
+    traced = torch.jit.trace(ScalarModel(), torch.ones((1, 8, 3, 224, 224)))
+    traced.save(str(model_path))
+    frame = np.zeros((16, 16, 3), dtype=np.uint8)
+    monkeypatch.setenv("TRUTHLENS_TEMPORAL_MODEL", str(model_path))
+    monkeypatch.setattr(
+        media, "sample_video_frames",
+        lambda path, limit: {"frame_count": 8, "sampled_frames": [
+            {"frame": frame, "frame_index": index, "timestamp_seconds": float(index)}
+            for index in range(8)
+        ]},
+    )
+    result = advanced_forensics._run_temporal_torchscript(tmp_path / "clip.mp4")
+    assert result["status"] == "model_assessed"
+    assert result["raw_model_output"] == 1.0
+    assert result["score_semantics"] == "unverified_scalar_output"
+    assert result["calibration_status"] == "not_calibrated"
+    assert "not a probability" in result["note"]
+
+
+def test_temporal_torchscript_rejects_multi_value_outputs(tmp_path, monkeypatch):
+    import torch
+    import numpy as np
+    from app.services import advanced_forensics, media
+
+    class MultiOutput(torch.nn.Module):
+        def forward(self, value):
+            return torch.stack((value.mean(), value.mean() + 1))
+
+    model_path = tmp_path / "temporal-multiclass.pt"
+    traced = torch.jit.trace(MultiOutput(), torch.ones((1, 8, 3, 224, 224)))
+    traced.save(str(model_path))
+    frame = np.zeros((16, 16, 3), dtype=np.uint8)
+    monkeypatch.setenv("TRUTHLENS_TEMPORAL_MODEL", str(model_path))
+    monkeypatch.setattr(
+        media, "sample_video_frames",
+        lambda path, limit: {"frame_count": 8, "sampled_frames": [
+            {"frame": frame, "frame_index": index, "timestamp_seconds": float(index)}
+            for index in range(8)
+        ]},
+    )
+    result = advanced_forensics._run_temporal_torchscript(tmp_path / "clip.mp4")
+    assert result["status"] == "unsupported_model_output"
+    assert result["output_shape"] == [2]
+    assert "No class score was selected" in result["note"]

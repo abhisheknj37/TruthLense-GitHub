@@ -171,3 +171,6 @@ No labelled dataset or approved calibration artifact is bundled. Until project-s
 ### Runtime readiness and retained-original purge
 
 `GET /api/capabilities` reports the status of NLI, per-pipeline calibration, optional OCR/ASR, private original retention and custody HMAC signing. It does not download or execute optional models just to report readiness. Authenticated users can call `POST /api/cases/retention/purge-expired` to purge expired originals only inside their own private storage folder.
+
+
+Temporal adapter contract is intentionally strict: it accepts exactly one scalar output and reports it as an unverified raw value. A value in the numerical range [0,1] is not treated as a probability unless the checkpoint's output semantics have been independently documented and validated. Multi-logit or multi-class outputs are rejected rather than silently taking the first element.

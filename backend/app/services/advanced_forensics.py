@@ -91,8 +91,28 @@ def _run_temporal_torchscript(path: Path) -> dict[str, Any]:
         model = torch.jit.load(model_path, map_location="cpu").eval()
         with torch.inference_mode():
             output = model(tensor)
+        if not isinstance(output, torch.Tensor) or output.numel() != 1:
+            return {
+                "status": "unsupported_model_output",
+                "model_path": Path(model_path).name,
+                "output_shape": list(output.shape) if isinstance(output, torch.Tensor) else None,
+                "note": "The configured temporal adapter requires exactly one scalar output. No class score was selected from a multi-value output.",
+            }
         score = float(output.reshape(-1)[0].item())
-        return {"status": "model_assessed", "model_path": Path(model_path).name, "raw_fake_score": score, "score_kind_assumption": "probability" if 0 <= score <= 1 else "logit", "note": "Only use weights whose architecture, preprocessing, label mapping and evaluation provenance match the tensor contract. Uncalibrated output is not a forensic probability."}
+        if not np.isfinite(score):
+            return {
+                "status": "invalid_model_output",
+                "model_path": Path(model_path).name,
+                "note": "The configured temporal model returned a non-finite scalar; no score was reported.",
+            }
+        return {
+            "status": "model_assessed",
+            "model_path": Path(model_path).name,
+            "raw_model_output": score,
+            "score_semantics": "unverified_scalar_output",
+            "calibration_status": "not_calibrated",
+            "note": "A scalar output was returned, but its class mapping, activation and calibration are not inferred from its numeric range. It is not a probability or manipulation verdict.",
+        }
     except Exception as exc:
         return {"status": "inference_error", "detail": f"{type(exc).__name__}: {str(exc)[:200]}"}
 
