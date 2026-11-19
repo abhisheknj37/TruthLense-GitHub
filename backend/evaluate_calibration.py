@@ -9,10 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.calibration import IsotonicRegression
-from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
-from sklearn.model_selection import GroupShuffleSplit
-
 
 def expected_calibration_error(labels, probabilities, bins=10):
     edges = np.linspace(0, 1, bins + 1)
@@ -37,39 +33,66 @@ def expected_calibration_error(labels, probabilities, bins=10):
 
 
 def _candidate_group_split(labels: np.ndarray, groups: np.ndarray, test_size: float):
-    """Select one deterministic group split with both labels on each side and no group leakage."""
-    splitter = GroupShuffleSplit(n_splits=128, test_size=test_size, random_state=20261120)
+    """Choose a deterministic source-disjoint split with both classes on both sides."""
+    rng = np.random.default_rng(20261120)
+    indices = np.arange(len(labels))
+    test_count = max(2, min(len(labels) - 2, int(round(len(labels) * test_size))))
     best = None
-    best_score = float("inf")
-    for train_index, test_index in splitter.split(np.zeros(len(labels)), labels, groups):
+    best_error = float("inf")
+    for _ in range(512):
+        shuffled = rng.permutation(indices)
+        test_index = shuffled[:test_count]
+        train_index = shuffled[test_count:]
         train_labels, test_labels = labels[train_index], labels[test_index]
         if len(np.unique(train_labels)) != 2 or len(np.unique(test_labels)) != 2:
             continue
         train_groups, test_groups = set(groups[train_index]), set(groups[test_index])
         if train_groups & test_groups:
             continue
-        # Prefer a held-out prevalence close to the complete dataset while preserving group isolation.
         prevalence_error = abs(float(test_labels.mean()) - float(labels.mean()))
         size_error = abs(len(test_index) / len(labels) - test_size)
-        score = prevalence_error + size_error
-        if score < best_score:
+        error = prevalence_error + size_error
+        if error < best_error:
             best = (train_index, test_index)
-            best_score = score
+            best_error = error
     if best is None:
         raise SystemExit(
-            "Could not produce a leakage-free group split with both classes in train and hold-out. "
-            "Add more independent source groups or revise the dataset."
+            "Could not produce a source-disjoint split with both classes in fit and held-out groups. "
+            "Add more independent sources or revise the labelled dataset."
         )
     return best
+
+
+def _auc_roc(labels: np.ndarray, scores: np.ndarray) -> float:
+    positives = int(np.sum(labels == 1))
+    negatives = int(np.sum(labels == 0))
+    if not positives or not negatives:
+        raise ValueError("ROC AUC requires both classes.")
+    order = np.argsort(scores, kind="mergesort")
+    ranks = np.empty(len(scores), dtype=np.float64)
+    sorted_scores = scores[order]
+    index = 0
+    while index < len(order):
+        end = index
+        while end + 1 < len(order) and sorted_scores[end + 1] == sorted_scores[index]:
+            end += 1
+        ranks[order[index:end + 1]] = (index + 1 + end + 1) / 2
+        index = end + 1
+    positive_rank_sum = float(ranks[labels == 1].sum())
+    return (positive_rank_sum - positives * (positives + 1) / 2) / (positives * negatives)
 
 
 def _metrics(labels: np.ndarray, probabilities: np.ndarray, bins: int):
     ece, reliability = expected_calibration_error(labels, probabilities, bins)
     clipped = np.clip(probabilities, 1e-6, 1 - 1e-6)
+    brier = float(np.mean((probabilities - labels) ** 2))
+    logloss = float(np.mean(
+        -(labels * np.log(clipped) + (1 - labels) * np.log(1 - clipped))
+    ))
     return {
-        "brier_score": float(brier_score_loss(labels, probabilities)),
-        "log_loss": float(log_loss(labels, clipped, labels=[0, 1])),
-        "roc_auc": float(roc_auc_score(labels, probabilities)),
+        "brier_score": brier,
+        "log_loss": logloss,
+        "roc_auc": _auc_roc(labels, probabilities),
         "expected_calibration_error": ece,
         "reliability_bins": reliability,
     }
@@ -150,6 +173,12 @@ def main():
         raise SystemExit("Held-out set must contain at least 20 independent source groups.")
     train_labels, train_scores = labels[train_index], scores[train_index]
     held_out_labels, held_out_scores = labels[test_index], scores[test_index]
+    try:
+        from sklearn.isotonic import IsotonicRegression
+    except ImportError as exc:
+        raise SystemExit(
+            "Install optional calibration dependencies with: pip install -r requirements-forensics.txt"
+        ) from exc
     calibrator = IsotonicRegression(out_of_bounds="clip").fit(train_scores, train_labels)
     calibrated = calibrator.predict(held_out_scores)
     raw_metrics = _metrics(held_out_labels, held_out_scores, args.bins)
