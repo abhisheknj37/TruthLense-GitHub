@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import LiveCapture from "./LiveCapture";
 import {
   Activity, AlertTriangle, ArrowRight, AudioLines, Bell, CalendarDays,
   Check, CheckCircle2, ChevronRight, Clock3, Download, FileBarChart2,
@@ -13,7 +14,7 @@ import {
   signInEmail, signInGoogle, signOutUser
 } from "./firebase";
 
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const API = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\\/+$/, "");
 const STORAGE_KEY = "truthlens.saved-investigations.v1";
 const MAX_FILES = 8;
 const MAX_BYTES = 40 * 1024 * 1024;
@@ -543,7 +544,10 @@ export default function App() {
       setActivityError("");
       setApiStatus("online");
     } catch (err) {
-      setActivityError(err.response?.data?.detail || err.message || "Could not load server activity.");
+      setActivityError(err.response?.data?.detail
+        || (!err.response
+          ? `No response from ${API}. Start the FastAPI backend and verify VITE_API_URL.`
+          : err.message || "Could not load server activity."));
       setApiStatus("offline");
     } finally {
       setActivityLoading(false);
@@ -679,15 +683,32 @@ export default function App() {
   }
   async function checkApi() {
     setApiStatus("checking");
-    setApiMessage("");
+    setApiMessage("Checking backend health…");
+    try {
+      const health = await axios.get(API + "/health", { timeout: 8000 });
+      if (health.data?.status !== "healthy") {
+        throw new Error("The API responded, but its health endpoint did not report healthy.");
+      }
+    } catch (err) {
+      setApiStatus("offline");
+      setApiMessage(!err.response
+        ? `No response from ${API}. Start the backend in its own terminal and check VITE_API_URL.`
+        : `Backend health check failed (${err.response.status}): ${err.response.data?.detail || err.message}`);
+      return;
+    }
     try {
       const token = await user.getIdToken();
-      const response = await axios.get(API + "/api/me", { timeout: 8000, headers: { Authorization: "Bearer " + token } });
+      await axios.get(API + "/api/me", {
+        timeout: 8000,
+        headers: { Authorization: "Bearer " + token }
+      });
       setApiStatus("online");
-      setApiMessage("Firebase identity verified by the TruthLens API.");
-    } catch {
+      setApiMessage("Backend is healthy and Firebase identity was verified.");
+    } catch (err) {
       setApiStatus("offline");
-      setApiMessage("Could not reach " + API + ". Start the FastAPI backend and check VITE_API_URL.");
+      setApiMessage(err.response
+        ? `Backend is reachable, but authentication failed (${err.response.status}): ${err.response.data?.detail || err.message}`
+        : `Backend health is reachable, but the authenticated API request failed. Check browser CORS settings for ${API}.`);
     }
   }
   function newInvestigation() {
@@ -849,7 +870,7 @@ export default function App() {
       </section>}
 
       {(page === "new" || page === "analysis") && <section className="investigation-page">
-        <div className="page-heading"><div><span className="section-kicker">CASE WORKSPACE / INGEST</span><h1>{page === "analysis" ? "Media analysis" : "New investigation"}</h1><p>Upload original evidence files to begin a multimodal review.</p></div>
+        <div className="page-heading"><div><span className="section-kicker">CASE WORKSPACE / INGEST</span><h1>{page === "analysis" ? "Media analysis" : "New investigation"}</h1><p>Capture live photo, video or audio, or upload original evidence files for multimodal review.</p></div>
           <div className="secure-badge"><ShieldCheck size={15} /> Evidence-first workflow</div></div>
         <Pipeline loading={loading} uploadProgress={uploadProgress} report={activeReport} />
         {loading && <div className="progress-panel"><div><b>{uploadProgress >= 100 ? "Evidence received · model analysis running" : "Uploading evidence"}</b><span>{uploadProgress}% transferred</span></div><div className="progress-track"><i style={{ width: uploadProgress + "%" }} /></div><small>Upload transfer is measured by the browser. Model-stage telemetry is not currently streamed by the API.</small></div>}
@@ -857,6 +878,8 @@ export default function App() {
           <div className="content-panel ingest-panel">
             <div className="panel-title"><div><span className="section-kicker">01 / EVIDENCE INTAKE</span><h2>Evidence files</h2></div>
               <span className="file-count">{files.length} / {MAX_FILES} files</span></div>
+            <LiveCapture onCapture={addFiles} />
+            <div className="intake-divider"><span>OR UPLOAD EXISTING EVIDENCE</span></div>
             <label className="dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
               <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg"
                 onChange={(event) => { addFiles([...event.target.files]); event.target.value = ""; }} />
