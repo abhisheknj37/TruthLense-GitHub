@@ -34,7 +34,7 @@ from app.services.transcription import transcribe_audio
 from app.services.text_analysis import analyze_text_context
 from app.services.documents import DocumentError, extract_document
 from app.services.claim_verification import verify_claims
-from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
+from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain, delete_case_events
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
@@ -315,6 +315,7 @@ async def analyze_case(
             case_title=title,
         )
     except Exception as exc:
+        delete_case_events(report_id, str(current_user["uid"]))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The analysis finished, but TruthLens could not persist the case record. Check backend data-directory permissions.",
@@ -381,6 +382,7 @@ def delete_saved_report(
     """Delete a saved case and its heatmap artifacts for its owner."""
     if not delete_user_report(current_user["uid"], report_id):
         raise HTTPException(status_code=404, detail="Investigation not found.")
+    delete_case_events(report_id, str(current_user["uid"]))
     return {"deleted": True, "report_id": report_id}
 
 
