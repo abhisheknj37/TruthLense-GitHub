@@ -118,8 +118,8 @@ async def analyze_case(
             provenance["content_credentials"] = await run_in_threadpool(verify_c2pa, temporary_path)
             if result["media_type"] == "image":
                 text_extraction = await run_in_threadpool(extract_image_text, temporary_path)
-                if text_extraction.get("text"):
-                    extracted_text.append(text_extraction["text"])
+                if text_extraction.get("analysis_eligible"):
+                    extracted_text.append(text_extraction.get("analysis_text", ""))
                 model_assessment = await run_in_threadpool(image_detector.analyze_image, temporary_path, True)
                 if model_assessment.get("status") == "inconclusive_no_face_detected":
                     whole_image = await run_in_threadpool(whole_image_detector.analyze, temporary_path)
@@ -134,7 +134,11 @@ async def analyze_case(
                         }
             elif result["media_type"] == "video":
                 text_extraction = await run_in_threadpool(extract_video_frame_text, temporary_path)
-                extracted_text.extend(frame.get("text", "") for frame in text_extraction.get("frames", []))
+                extracted_text.extend(
+                    frame.get("analysis_text", "")
+                    for frame in text_extraction.get("frames", [])
+                    if frame.get("analysis_eligible")
+                )
                 video_analysis = await run_in_threadpool(video_detector.analyze, temporary_path)
                 video_analysis["temporal_forensics"] = await run_in_threadpool(temporal_video_forensics, temporary_path)
                 video_analysis["face_identity_consistency"] = await run_in_threadpool(face_identity_consistency, temporary_path)
@@ -272,6 +276,20 @@ async def analyze_case(
 
     combined_text = "\n\n".join([context_text, *extracted_text]).strip()
     text_analysis = analyze_text_context(combined_text)
+    low_confidence_ocr = [
+        {
+            "filename": asset.filename,
+            "confidence_level": asset.text_extraction.get("confidence_level"),
+            "mean_word_confidence": asset.text_extraction.get("mean_word_confidence"),
+            "note": "Raw OCR is preserved in the evidence item, but excluded from automated claim analysis because it did not pass the OCR quality gate.",
+        }
+        for asset in assets
+        if asset.text_extraction.get("engine") == "Tesseract OCR"
+        and asset.text_extraction.get("text")
+        and not asset.text_extraction.get("analysis_eligible", False)
+    ]
+    if low_confidence_ocr:
+        text_analysis["ocr_review_required"] = low_confidence_ocr
     if combined_text:
         text_analysis["claim_verification"] = await verify_claims(combined_text)
     cross_modal.extend(correlate_text_evidence(
