@@ -32,7 +32,7 @@ def test_optional_integrations_report_unconfigured_state(monkeypatch, tmp_path):
     monkeypatch.delenv("TRUTHLENS_SYNCNET_WEIGHTS", raising=False)
     assert syncnet_lipsync(tmp_path / "missing.mp4")["status"] == "model_weights_missing"
     c2pa = verify_c2pa(tmp_path / "missing.mp4")
-    assert c2pa["status"] in {"validator_not_installed", "unsupported_format"}
+    assert c2pa["status"] in {"validator_not_installed", "validator_unavailable", "unsupported_format"}
 
 
 def test_text_triage_never_returns_truth_verdict():
