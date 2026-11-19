@@ -135,17 +135,17 @@ function exportPdf(report) {
       const text = String(value || "").replace(/\\s+/g, " ").trim();
       return text.length > 180 ? text.slice(0, 180) + "… [full text in technical appendix]" : text || "No text recognized";
     };
-    const rows = frames.length ? frames.map((frame) => {
+    const rowFor = (frame) => {
       const confidence = frame.mean_word_confidence ?? frame.confidence;
       return "<tr><td>" + esc(safeValue("timestamp", frame.timestamp_seconds)) + "</td><td>" +
         esc(safeValue("frame", frame.frame_index)) + "</td><td class='ocr-text'>" + esc(previewText(frame.text)) +
         "</td><td>" + esc(frame.engine || data.engine || "Not recorded") + "</td><td>" +
         esc(confidence == null ? "Not reported" : String(confidence) + (frame.confidence_level ? " · " + frame.confidence_level : "")) +
-        "</td><td>" + (frame.analysis_eligible ? "Eligible" : "Not eligible") + "</td></tr>";
-    }).join("") : data.text ? "<tr><td>—</td><td>—</td><td class='ocr-text'>" + esc(previewText(data.text)) +
-      "</td><td>" + esc(data.engine || "Not recorded") + "</td><td>" +
-      esc(data.mean_word_confidence == null ? "Not reported" : String(data.mean_word_confidence) + " · " + (data.confidence_level || "recognition estimate")) +
-      "</td><td>" + (data.analysis_eligible ? "Eligible" : "Not eligible") + "</td></tr>" : "";
+        "</td><td>" + (frame.analysis_eligible ? "Eligible" : "Excluded · review") + "</td></tr>";
+    };
+    const eligibleRows = frames.filter((frame) => frame.analysis_eligible).map(rowFor).join("");
+    const reviewRows = frames.filter((frame) => !frame.analysis_eligible || frame.confidence_level === "low").map(rowFor).join("");
+    const rows = !frames.length && data.text ? rowFor({ ...data, timestamp_seconds: null, frame_index: null }) : "";
     const comparison = data.engine_comparison && Object.keys(data.engine_comparison).length
       ? "<h4>Independent OCR engine comparison</h4>" + objectTable(data.engine_comparison) : "";
     const correction = data.investigator_correction?.text
@@ -156,10 +156,12 @@ function exportPdf(report) {
     const summary = "<p class='muted'>Machine OCR · " + esc(data.engine || "Engine not recorded") +
       " · " + esc(data.languages || "Language not recorded") + " · " + frames.length + " sampled frame(s). " +
       "Confidence is a recognition estimate, not an authenticity probability.</p>";
-    const table = rows ? "<table class='data-table compact ocr-table'><thead><tr><th>Time (s)</th><th>Frame</th><th>Extracted text</th><th>Engine</th><th>Confidence</th><th>Analysis</th></tr></thead><tbody>" +
-      rows + "</tbody></table>" : "<p class='empty'>No machine-readable OCR or transcription text was recorded.</p>";
+    const tableHead = "<table class='data-table compact ocr-table'><thead><tr><th>Time (s)</th><th>Frame</th><th>Extracted text preview</th><th>Engine</th><th>Confidence</th><th>Analysis</th></tr></thead><tbody>";
+    const eligibleTable = eligibleRows ? "<h5>Eligible machine OCR · " + frames.filter((frame) => frame.analysis_eligible).length + "</h5>" + tableHead + eligibleRows + "</tbody></table>" : "";
+    const reviewTable = reviewRows ? "<h5>Excluded / low-confidence OCR · human review only</h5>" + tableHead + reviewRows + "</tbody></table>" : "";
+    const table = eligibleTable + reviewTable || (rows ? tableHead + rows + "</tbody></table>" : "<p class='empty'>No machine-readable OCR or transcription text was recorded.</p>");
     const low = frames.filter((frame) => !frame.analysis_eligible || frame.confidence_level === "low").length;
-    const quality = low ? "<p class='ocr-warning'>" + low + " sampled frame(s) did not pass the analysis quality gate or were marked low confidence. Verify text against the original evidence.</p>" : "";
+    const quality = low ? "<p class='ocr-warning'>" + low + " sampled frame(s) are excluded from claim analysis or marked low confidence. Verify text against the original evidence.</p>" : "";
     return "<h4>OCR / transcription review</h4>" + summary + quality + table + comparison + correction;
   };
   const renderTemporal = (data) => {
