@@ -11,12 +11,6 @@ class Observation(BaseModel):
     timestamp_seconds: float | None = None
 
 
-class ModelStatus(BaseModel):
-    status: str = "not_configured"
-    model_name: str | None = None
-    note: str = "No validated authenticity model is configured."
-
-
 class AssetResult(BaseModel):
     asset_id: str
     filename: str
@@ -26,7 +20,8 @@ class AssetResult(BaseModel):
     analysis_status: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     observations: list[Observation] = Field(default_factory=list)
-    model_assessment: ModelStatus = Field(default_factory=ModelStatus)
+    model_assessment: dict[str, Any] = Field(default_factory=dict)
+    video_analysis: dict[str, Any] = Field(default_factory=dict)
     sampled_frames: list[dict[str, Any]] = Field(default_factory=list)
 
 
