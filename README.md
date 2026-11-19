@@ -18,6 +18,15 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 
 Completed case reports are stored in the current browser's local storage. They are not synchronized to a server or shared across browsers/devices. The upload previews are temporary browser object URLs. The API processes uploaded media using temporary working copies and removes those copies after analysis.
 
+## Authentication
+
+- Firebase Authentication supports email/password and Google sign-in.
+- FastAPI verifies Firebase ID tokens (signed JWTs) on protected requests. The API never trusts a user ID sent in the request body.
+- Follow [docs/FIREBASE_AUTH_SETUP.md](docs/FIREBASE_AUTH_SETUP.md) to configure your Firebase project and local secrets.
+- Copy `frontend/.env.example` to `frontend/.env.local`; copy `backend/.env.example` to `backend/.env`. Keep the Firebase Admin service-account JSON private and outside Git.
+- The analysis API and `/api/me` require a valid token. Public health checks remain unauthenticated.
+- Browser case history is scoped by Firebase UID, but remains local to that browser. Cloud-synced case storage and role-based access are not implemented yet.
+
 ## Current model-backed pipelines
 
 - **Image:** face crops → DeiTFake ViT image classifier → per-face score, heuristic uncertainty band and Grad-CAM-style patch attribution.
