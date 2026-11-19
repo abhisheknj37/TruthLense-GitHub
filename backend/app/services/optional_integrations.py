@@ -100,11 +100,31 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         tesseract_display = "tesseract on PATH"
     if not tesseract_found:
         ocr_missing.append("Tesseract OCR executable")
+    ocr_languages = os.getenv("TRUTHLENS_OCR_LANGUAGES", "eng").strip() or "eng"
+    language_status = "not_checked"
+    missing_languages: list[str] = []
+    if tesseract_found and _module_available("pytesseract"):
+        try:
+            import pytesseract
+            if configured_tesseract:
+                pytesseract.pytesseract.tesseract_cmd = str(Path(configured_tesseract).expanduser())
+            pytesseract.get_tesseract_version()
+            installed_languages = set(pytesseract.get_languages(config=""))
+            missing_languages = sorted({
+                language.strip() for language in ocr_languages.split("+") if language.strip()
+            } - installed_languages)
+            language_status = "missing" if missing_languages else "available"
+        except Exception as exc:
+            language_status = "engine_error"
+            ocr_missing.append(f"Tesseract check failed: {type(exc).__name__}")
     result["ocr"] = {
-        "status": "ready_to_attempt" if not ocr_missing else "needs_setup",
+        "status": "ready_to_attempt" if not ocr_missing and language_status == "available" else "needs_setup",
         "missing": ocr_missing,
         "executable": tesseract_display,
-        "note": "OCR runs on images and sampled video frames; verify extracted text against the source.",
+        "languages_requested": ocr_languages,
+        "language_status": language_status,
+        "missing_languages": missing_languages,
+        "note": "OCR runs on images and sampled video frames; verify extracted text against the source. Requested language traineddata is checked when Tesseract is available.",
     }
 
     asr_model = os.getenv("TRUTHLENS_ASR_MODEL", "").strip()
