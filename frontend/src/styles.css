@@ -198,3 +198,5 @@ body{background:radial-gradient(ellipse at 80% 5%,#07506433 0,transparent 35%),r
 .heatmap-limit{font-size:7px;color:#718d99;line-height:1.5}
 @media(max-width:1250px){.dashboard-insights-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.heatmap-panel{grid-column:span 2}.heatmap-panel .heatmap-image-wrap,.heatmap-panel .heatmap-placeholder{height:210px}}
 @media(max-width:760px){.dashboard-insights-grid{grid-template-columns:1fr}.heatmap-panel{grid-column:auto}.dashboard-insights-grid>.content-panel{padding:14px}.integrity-list,.activity-timeline{max-height:none}.activity-event-copy small{max-width:55vw}.heatmap-panel .heatmap-image-wrap,.heatmap-panel .heatmap-placeholder{height:185px}}
+
+.heatmap-loading{height:100%;min-height:155px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;color:#27d8cf}.heatmap-loading span{font-size:9px;color:#91adb8}
