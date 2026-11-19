@@ -38,19 +38,20 @@ class FakeCapture:
         self.released = True
 
 
-def test_inspect_video_uses_decoded_frames_not_invalid_container_count(monkeypatch, tmp_path):
-    frames = [np.full((12, 16, 3), value, dtype=np.uint8) for value in range(5)]
-    capture = FakeCapture(frames)
-    monkeypatch.setattr(media.cv2, "VideoCapture", lambda *_: capture)
+def test_inspect_video_uses_two_pass_even_temporal_coverage(monkeypatch, tmp_path):
+    frames = [np.full((12, 16, 3), value, dtype=np.uint8) for value in range(10)]
+    captures = [FakeCapture(frames), FakeCapture(frames)]
+    monkeypatch.setattr(media.cv2, "VideoCapture", lambda *_: captures.pop(0))
 
-    metadata, observations, samples = media.inspect_video(Path(tmp_path / "sample.webm"), sample_limit=3)
+    metadata, observations, samples = media.inspect_video(Path(tmp_path / "sample.webm"), sample_limit=4)
 
-    assert metadata["frame_count"] == 5
-    assert metadata["sampled_frame_count"] == 3
-    assert metadata["duration_seconds"] == round(5 / 16.583, 3)
-    assert all(item["frame_index"] >= 0 for item in samples)
-    assert "5 frames" in observations[0]["detail"]
-    assert capture.released
+    assert metadata["frame_count"] == 10
+    assert metadata["sampled_frame_count"] == 4
+    assert metadata["duration_seconds"] == round(10 / 16.583, 3)
+    assert [item["frame_index"] for item in samples] == [0, 3, 6, 9]
+    assert metadata["sampling_method"] == "two-pass exact temporal stratification"
+    assert "10 frames" in observations[0]["detail"]
+    assert len(captures) == 0
 
 
 def test_inspect_video_reports_zero_frames_without_negative_metadata(monkeypatch, tmp_path):

@@ -11,7 +11,7 @@ from app.routes import analysis as analysis_module
 
 def test_full_case_upload_compares_image_video_audio_and_claim_sources(monkeypatch):
     """Exercise the real upload/report route with deterministic model and extractor fixtures."""
-    media_types = {".jpg": "image", ".mp4": "video", ".wav": "audio"}
+    media_types = {".jpg": "image", ".mp4": "video", ".wav": "audio", ".txt": "text"}
     monkeypatch.setattr(
         analysis_module,
         "inspect_media",
@@ -21,6 +21,11 @@ def test_full_case_upload_compares_image_video_audio_and_claim_sources(monkeypat
             "observations": [],
             "sampled_frames": [{"frame_index": 0, "timestamp_seconds": 0.0}]
             if Path(path).suffix.lower() == ".mp4" else [],
+            "text_extraction": {
+                "status": "completed", "engine": "UTF-8 plain-text reader",
+                "text": "The bridge was closed on Monday for repairs.",
+                "analysis_eligible": True,
+            } if Path(path).suffix.lower() == ".txt" else {},
             "forensic_parameters": {},
         },
     )
@@ -117,11 +122,12 @@ def test_full_case_upload_compares_image_video_audio_and_claim_sources(monkeypat
 
     monkeypatch.setattr(analysis_module, "verify_claims", fake_claim_verification)
 
-    upload_bytes = [b"fixture-image", b"fixture-video", b"fixture-audio"]
+    upload_bytes = [b"fixture-image", b"fixture-video", b"fixture-audio", b"The bridge was closed on Monday for repairs."]
     files = [
         ("files", ("evidence.jpg", upload_bytes[0], "image/jpeg")),
         ("files", ("clip.mp4", upload_bytes[1], "video/mp4")),
         ("files", ("speech.wav", upload_bytes[2], "audio/wav")),
+        ("files", ("claim.txt", b"The bridge was closed on Monday for repairs.", "text/plain")),
     ]
     digests = [hashlib.sha256(value).hexdigest() for value in upload_bytes]
     app.dependency_overrides[get_current_user] = lambda: {
@@ -141,28 +147,36 @@ def test_full_case_upload_compares_image_video_audio_and_claim_sources(monkeypat
             )
         assert response.status_code == 200, response.text
         report = response.json()
-        assert {item["media_type"] for item in report["assets"]} == {"image", "video", "audio"}
+        assert {item["media_type"] for item in report["assets"]} == {"image", "video", "audio", "text"}
         assert all(item["integrity_verification"]["status"] == "match" for item in report["assets"])
         assert report["human_review_required"] is True
         for asset in report["assets"]:
             uncertainty = asset["uncertainty_assessment"]
-            assert uncertainty["status"] == "assessed"
             assert uncertainty["calibration_status"] == "not_calibrated"
-            assert uncertainty["uncertainty_level"] in {"high", "moderate", "lower"}
-            assert uncertainty["sample_count"] >= 1
+            if asset["media_type"] == "text":
+                assert asset["model_assessment"]["status"] == "not_applicable"
+                assert uncertainty["status"] == "not_assessable"
+            else:
+                assert uncertainty["status"] == "assessed"
+                assert uncertainty["uncertainty_level"] in {"high", "moderate", "lower"}
+                assert uncertainty["sample_count"] >= 1
 
         text_pairs = [
             item for item in report["cross_modal_review"]
             if item["type"] == "text_evidence_overlap"
         ]
-        assert len(text_pairs) == 6
+        assert len(text_pairs) == 10
         source_kinds = {item["source_a_kind"] for item in text_pairs} | {
             item["source_b_kind"] for item in text_pairs
         }
-        assert source_kinds == {"claim", "image_ocr", "caption_or_video_ocr", "transcript"}
+        assert source_kinds == {"claim", "image_ocr", "caption_or_video_ocr", "transcript", "evidence_text"}
         assert all("does not establish" in item["detail"] for item in text_pairs)
         assert any(
             item["type"] == "paired_audio_video_model_signal_comparison"
+            for item in report["cross_modal_review"]
+        )
+        assert any(
+            item["type"] == "relative_timeline_model_signal_association"
             for item in report["cross_modal_review"]
         )
         assert any(

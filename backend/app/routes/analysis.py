@@ -27,7 +27,7 @@ from app.services.activity import (
     save_report_and_activity,
     save_ocr_correction,
 )
-from app.services.correlation import correlate_modalities, correlate_text_evidence
+from app.services.correlation import correlate_modalities, correlate_text_evidence, correlate_timed_model_signals
 from app.services.semantic_review import compare_semantic_sources
 from app.services.uncertainty_assessment import build_uncertainty_assessment
 from app.services.integrity import compare_sha256
@@ -248,6 +248,13 @@ async def analyze_case(
 
     assets_for_correlation = [asset.model_dump() for asset in assets]
     cross_modal = correlate_modalities(assets_for_correlation, pair_media)
+    if pair_media:
+        for video_asset in assets_for_correlation:
+            if video_asset.get("media_type") != "video":
+                continue
+            for audio_asset in assets_for_correlation:
+                if audio_asset.get("media_type") == "audio":
+                    cross_modal.append(correlate_timed_model_signals(video_asset, audio_asset))
     try:
         if len(retained_paths.get("image", [])) >= 2:
             cross_modal.extend(await run_in_threadpool(compare_images, retained_paths["image"]))

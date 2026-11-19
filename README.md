@@ -81,6 +81,7 @@ Open the frontend at http://localhost:5173 and API docs at http://127.0.0.1:8000
 - Images: JPG, JPEG, PNG, WEBP, BMP, TIF, TIFF
 - Video: MP4, MOV, AVI, MKV, WEBM
 - Audio: WAV, FLAC, OGG
+- Plain text: UTF-8 TXT and MD (maximum 1 MB per file; imported as source evidence, not executed)
 - Up to 8 files per case; maximum 40 MB per file
 
 Document uploads such as PDF, DOCX and XLSX are not supported by the current analysis API and are therefore not offered as evidence types in this version.

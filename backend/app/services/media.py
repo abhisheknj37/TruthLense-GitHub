@@ -101,44 +101,53 @@ def inspect_image(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return metadata, observations
 
 
-def sample_video_frames(path: Path, max_frames: int = 8) -> dict[str, Any]:
-    """Decode sequentially and retain a deterministic, evenly distributed sample.
-
-    Do not trust container-reported frame counts: malformed WebM metadata can
-    expose negative or implausible CAP_PROP_FRAME_COUNT values.
-    """
-    capture = cv2.VideoCapture(str(path))
-    if not capture.isOpened():
+def sample_video_frames(path: Path, max_frames: int = 16) -> dict[str, Any]:
+    """Count decoded frames, then decode evenly spaced frame indices in a second pass."""
+    first = cv2.VideoCapture(str(path))
+    if not first.isOpened():
         raise MediaError("The uploaded video could not be decoded by OpenCV.")
-
-    fps_value = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+    fps_value = float(first.get(cv2.CAP_PROP_FPS) or 0)
     fps = fps_value if math.isfinite(fps_value) and 0 < fps_value < 1000 else None
-    width_value = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-    height_value = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    width_value = int(first.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height_value = int(first.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     width = width_value if width_value > 0 else None
     height = height_value if height_value > 0 else None
-    retained: list[tuple[int, np.ndarray]] = []
-    frame_count = 0
-    rng = np.random.default_rng(2026)
-    limit = max(1, int(max_frames))
-
+    decoded_count = 0
     try:
         while True:
-            ok, frame = capture.read()
+            ok, _ = first.read()
             if not ok:
                 break
-            index = frame_count
-            frame_count += 1
-            if len(retained) < limit:
-                retained.append((index, frame.copy()))
-            else:
-                slot = int(rng.integers(0, frame_count))
-                if slot < limit:
-                    retained[slot] = (index, frame.copy())
+            decoded_count += 1
     finally:
-        capture.release()
+        first.release()
 
-    retained.sort(key=lambda item: item[0])
+    if decoded_count == 0:
+        return {
+            "fps": fps, "frame_count": 0, "duration_seconds": None,
+            "width": width, "height": height, "sampled_frames": [],
+            "sampling_method": "two-pass exact temporal stratification",
+        }
+
+    limit = max(1, min(int(max_frames), decoded_count))
+    target_indices = np.unique(np.linspace(0, decoded_count - 1, num=limit, dtype=int)).tolist()
+    targets = set(target_indices)
+    second = cv2.VideoCapture(str(path))
+    if not second.isOpened():
+        raise MediaError("The uploaded video could not be reopened for temporal sampling.")
+    retained = []
+    frame_index = 0
+    try:
+        while frame_index < decoded_count:
+            ok, frame = second.read()
+            if not ok:
+                break
+            if frame_index in targets:
+                retained.append((frame_index, frame.copy()))
+            frame_index += 1
+    finally:
+        second.release()
+
     samples = [{
         "frame_index": index,
         "timestamp_seconds": round(index / fps, 3) if fps else None,
@@ -148,15 +157,18 @@ def sample_video_frames(path: Path, max_frames: int = 8) -> dict[str, Any]:
     } for index, frame in retained]
     return {
         "fps": fps,
-        "frame_count": frame_count,
-        "duration_seconds": round(frame_count / fps, 3) if fps and frame_count else None,
+        "frame_count": decoded_count,
+        "duration_seconds": round(decoded_count / fps, 3) if fps else None,
         "width": width,
         "height": height,
         "sampled_frames": samples,
+        "sampling_method": "two-pass exact temporal stratification",
+        "target_frame_indices": target_indices,
+        "sampled_frame_indices": [index for index, _ in retained],
     }
 
 
-def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def inspect_video(path: Path, sample_limit: int = 16) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     decoded = sample_video_frames(path, sample_limit)
     samples = [
         {key: value for key, value in item.items() if key != "frame"}
@@ -171,6 +183,8 @@ def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], li
         "width": decoded["width"],
         "height": decoded["height"],
         "sampled_frame_count": len(samples),
+        "sampling_method": decoded.get("sampling_method"),
+        "sampled_frame_indices": decoded.get("sampled_frame_indices", []),
     }
     if frame_count == 0:
         detail = "The video container opened, but sequential decoding returned no readable frames."

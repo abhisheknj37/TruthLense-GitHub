@@ -129,3 +129,57 @@ def correlate_text_evidence(
                 "source_b_preview": other_text[:500],
             })
     return findings
+
+
+
+def correlate_timed_model_signals(video_asset: dict[str, Any], audio_asset: dict[str, Any]) -> dict[str, Any]:
+    """Compare relative-time score profiles; this is not synchronization or a fused detector."""
+    video = video_asset.get("video_analysis") or {}
+    audio = audio_asset.get("model_assessment") or {}
+    frames = [
+        row for row in video.get("frames", [])
+        if row.get("status") == "model_assessed"
+        and isinstance(row.get("timestamp_seconds"), (int, float))
+        and isinstance((row.get("scores") or {}).get("fake_median_across_detected_faces"), (int, float))
+    ]
+    segments = [
+        row for row in audio.get("segments", [])
+        if isinstance(row.get("start_seconds"), (int, float))
+        and isinstance(row.get("end_seconds"), (int, float))
+        and isinstance(row.get("fake_model_score"), (int, float))
+    ]
+    if len(frames) < 3 or len(segments) < 3:
+        return {
+            "type": "relative_timeline_model_signal_association",
+            "status": "insufficient_temporal_samples",
+            "video_samples": len(frames),
+            "audio_samples": len(segments),
+            "note": "At least three timestamped model samples from each modality are required.",
+        }
+
+    video_times = np.asarray([float(item["timestamp_seconds"]) for item in frames], dtype=np.float64)
+    video_scores = np.asarray([float(item["scores"]["fake_median_across_detected_faces"]) for item in frames], dtype=np.float64)
+    audio_times = np.asarray([(float(item["start_seconds"]) + float(item["end_seconds"])) / 2 for item in segments], dtype=np.float64)
+    audio_scores = np.asarray([float(item["fake_model_score"]) for item in segments], dtype=np.float64)
+    video_duration = max(float(video_times.max()), 1e-6)
+    audio_duration = max(float(audio_times.max()), max(float(item["end_seconds"]) for item in segments), 1e-6)
+    # Relative progress aligns the starts/ends for exploratory profile comparison; it does not estimate sync offset.
+    phases = np.linspace(0.0, 1.0, num=min(24, max(len(video_times), len(audio_times))))
+    video_profile = np.interp(phases, video_times / video_duration, video_scores)
+    audio_profile = np.interp(phases, audio_times / audio_duration, audio_scores)
+    if float(np.std(video_profile)) < 1e-8 or float(np.std(audio_profile)) < 1e-8:
+        association = None
+    else:
+        association = float(np.corrcoef(video_profile, audio_profile)[0, 1])
+    return {
+        "type": "relative_timeline_model_signal_association",
+        "status": "completed",
+        "method": "Pearson association of linearly interpolated fake-direction model scores over normalized clip progress",
+        "video_samples": int(len(frames)),
+        "audio_samples": int(len(segments)),
+        "comparison_points": int(len(phases)),
+        "relative_score_pearson_r": round(association, 4) if association is not None else None,
+        "median_absolute_score_difference": round(float(np.median(np.abs(video_profile - audio_profile))), 5),
+        "interpretation": "Descriptive association between two different model-score timelines. Similarity or divergence does not establish authenticity, synchronization, source identity or manipulation.",
+        "limitation": "The comparison normalizes each file to relative progress and assumes the supplied files represent the same recording. It does not estimate a real-world time offset or phoneme/viseme correspondence.",
+    }

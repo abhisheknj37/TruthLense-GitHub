@@ -12,7 +12,7 @@ from app.services.media import sample_video_frames
 
 
 class VideoDeepfakeAnalyzer:
-    def __init__(self, image_detector: ImageDeepfakeDetector, max_frames: int = 8):
+    def __init__(self, image_detector: ImageDeepfakeDetector, max_frames: int = 16):
         self.image_detector = image_detector
         self.max_frames = max_frames
 
@@ -69,6 +69,14 @@ class VideoDeepfakeAnalyzer:
             median_fake = None
             prediction = "inconclusive"
             status = "inconclusive_no_face_frames"
+        frame_std = float(np.std(valid_scores)) if valid_scores else None
+        frame_min = float(np.min(valid_scores)) if valid_scores else None
+        frame_max = float(np.max(valid_scores)) if valid_scores else None
+        direction_counts = {
+            "fake_direction": sum(value >= 0.65 for value in valid_scores),
+            "real_direction": sum(value <= 0.35 for value in valid_scores),
+            "ambiguous": sum(0.35 < value < 0.65 for value in valid_scores),
+        }
         return {
             "status": status,
             "model_name": self.image_detector.model_name,
@@ -77,8 +85,15 @@ class VideoDeepfakeAnalyzer:
                 "fake_median_across_face_frames": round(median_fake, 5) if median_fake is not None else None,
                 "face_frames_analyzed": len(valid_scores),
                 "sampled_frames": len(frame_results),
+                "fake_score_std_across_face_frames": round(frame_std, 5) if frame_std is not None else None,
+                "fake_score_min_across_face_frames": round(frame_min, 5) if frame_min is not None else None,
+                "fake_score_max_across_face_frames": round(frame_max, 5) if frame_max is not None else None,
+                "fake_score_range_across_face_frames": round(frame_max - frame_min, 5) if frame_min is not None and frame_max is not None else None,
+                "frame_direction_counts": direction_counts,
             },
             "model_score_type": "median_frame_softmax_score_not_calibrated_probability",
+            "sampling_method": decoded.get("sampling_method"),
+            "sampled_frame_indices": decoded.get("sampled_frame_indices", []),
             "uncertainty_band": (
                 "ambiguous" if median_fake is None or 0.35 < median_fake < 0.65
                 else "model_signal_separation"
