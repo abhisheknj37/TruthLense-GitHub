@@ -150,6 +150,7 @@ def test_full_case_upload_compares_image_video_audio_and_claim_sources(monkeypat
         assert {item["media_type"] for item in report["assets"]} == {"image", "video", "audio", "text"}
         assert all(item["integrity_verification"]["status"] == "match" for item in report["assets"])
         assert report["human_review_required"] is True
+        assert all(asset["evidence_storage"]["status"] == "not_retained" for asset in report["assets"])
         for asset in report["assets"]:
             uncertainty = asset["uncertainty_assessment"]
             assert uncertainty["calibration_status"] == "not_calibrated"

@@ -166,3 +166,8 @@ The chain-of-custody API also exports a JSON manifest. Set a strong server-only 
 The calibration script requires a source-group column and uses a group-separated fit/held-out partition. It exports a candidate artifact containing the dataset SHA-256, model ID, pipeline, fit/held-out group counts, raw-vs-calibrated held-out metrics and the isotonic mapping. Candidate artifacts are never applied at runtime. An authorized reviewer must explicitly mark the artifact approved and record reviewer/time; runtime then checks the exact model ID and modality pipeline and rejects mismatches or insufficient held-out evidence.
 
 No labelled dataset or approved calibration artifact is bundled. Until project-specific validation is completed and approved, TruthLens must continue to report raw model outputs and heuristic review uncertainty as uncalibrated.
+
+
+### Runtime readiness and retained-original purge
+
+`GET /api/capabilities` reports the status of NLI, per-pipeline calibration, optional OCR/ASR, private original retention and custody HMAC signing. It does not download or execute optional models just to report readiness. Authenticated users can call `POST /api/cases/retention/purge-expired` to purge expired originals only inside their own private storage folder.

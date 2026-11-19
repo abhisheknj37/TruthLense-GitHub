@@ -156,28 +156,49 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
     }
 
     calibration_artifact = os.getenv("TRUTHLENS_CALIBRATION_ARTIFACT", "").strip()
-    calibration_status = "not_configured"
+    pipeline_models = {
+        "image": os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2"),
+        "video": os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2"),
+        "audio": os.getenv("TRUTHLENS_AUDIO_MODEL", "Hemgg/Deepfake-audio-detection"),
+    }
     if calibration_artifact:
         from app.services.calibration_registry import load_approved_calibration
-        try:
-            # Capability page is global; list each modality against its configured checkpoint.
-            statuses = {
-                pipeline: load_approved_calibration(
-                    os.getenv("TRUTHLENS_" + pipeline.upper() + "_MODEL", "") or None,
-                    pipeline,
-                ).get("status")
-                for pipeline in ("image", "video", "audio")
-            }
-            calibration_status = "configured"
-        except Exception:
-            statuses = {pipeline: "check_failed" for pipeline in ("image", "video", "audio")}
+        statuses = {
+            pipeline: load_approved_calibration(model_id, pipeline).get("status")
+            for pipeline, model_id in pipeline_models.items()
+        }
     else:
-        statuses = {pipeline: "not_configured" for pipeline in ("image", "video", "audio")}
+        statuses = {pipeline: "not_configured" for pipeline in pipeline_models}
     result["calibration"] = {
-        "status": calibration_status,
+        "status": "configured" if calibration_artifact else "not_configured",
         "artifact": Path(calibration_artifact).name if calibration_artifact else None,
         "pipelines": statuses,
-        "note": "Runtime calibration only applies to an explicitly approved artifact with an exact model ID and modality match. Candidate artifacts are not applied.",
+        "note": "Runtime calibration only applies to an explicitly approved artifact with an exact checkpoint ID and modality match. Candidate artifacts are not applied.",
+    }
+
+    nli_model = os.getenv("TRUTHLENS_NLI_MODEL", "").strip()
+    result["semantic_review"] = {
+        "status": "configured_model_lazy_load" if nli_model else "not_configured",
+        "model": nli_model or None,
+        "note": "Configured NLI weights are loaded on first semantic comparison; outputs are uncalibrated candidate relationships, not verified claims.",
+    }
+    originals_dir = os.getenv("TRUTHLENS_ORIGINALS_DIR", "").strip()
+    originals_path = Path(originals_dir).expanduser() if originals_dir else Path(__file__).resolve().parents[2] / "data" / "originals"
+    try:
+        retention_days = max(1, min(int(os.getenv("TRUTHLENS_ORIGINAL_RETENTION_DAYS", "30")), 3650))
+    except ValueError:
+        retention_days = 30
+    result["original_evidence_retention"] = {
+        "status": "configured_private_directory" if originals_path.exists() else "directory_created_on_first_opt_in",
+        "directory_name": originals_path.name,
+        "retention_days": retention_days,
+        "user_opt_in_required": True,
+        "note": "Original bytes are retained only when the investigator opts in on a case. Downloads are owner-checked and SHA-256 revalidated.",
+    }
+    result["evidence_ledger_signing"] = {
+        "status": "hmac_enabled" if os.getenv("TRUTHLENS_LEDGER_HMAC_KEY", "") else "hmac_not_configured",
+        "key_id": os.getenv("TRUTHLENS_LEDGER_KEY_ID", "truthlens-ledger-key-1") if os.getenv("TRUTHLENS_LEDGER_HMAC_KEY", "") else None,
+        "note": "The HMAC secret is never returned. HMAC is a server-secret keyed tamper check, not a trusted external timestamp or third-party anchor.",
     }
 
     result["score_evaluation"] = {

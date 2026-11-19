@@ -15,7 +15,7 @@ TruthLens separates technical observations, model outputs and human conclusions.
 
 ### Video
 - OpenCV reads the container metadata.
-- At most eight evenly spaced frames are sampled.
+- Up to sixteen deterministic, evenly spaced frame indices are selected after a first sequential pass counts actual decodable frames; a second pass extracts those exact indices.
 - Each frame is passed through the same face-crop image detector.
 - The report stores frame index, timestamp, per-frame result and a median score over face-bearing frames.
 
@@ -48,3 +48,8 @@ Models are loaded lazily on first use and cached in process memory. The first ca
 
 ## Public deployment hardening
 The local hackathon MVP needs isolated media workers, process-level CPU/memory/time limits, stronger content validation, authentication, rate limiting, private storage and deletion policies before public exposure. Do not allow uploaded media to execute.
+
+
+Plain-text evidence accepts UTF-8 TXT/MD files up to 1 MB. Optional NLI runs bidirectional sentence-pair checks when configured. Paired audio/video review also compares normalized relative-time model-score profiles; this is not a synchronization offset, fused score or authenticity conclusion.
+
+Original evidence retention is opt-in per case. Retained files have an expiry manifest, per-user private storage and an authenticated download that rechecks SHA-256. The owner can request an expiry purge. The local custody ledger can optionally HMAC-sign event hashes when a server-only secret is configured.
