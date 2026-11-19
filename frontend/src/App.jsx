@@ -3,10 +3,15 @@ import axios from "axios";
 import {
   Activity, AlertTriangle, ArrowRight, AudioLines, Bell, CalendarDays,
   Check, CheckCircle2, ChevronRight, Clock3, Download, FileBarChart2,
-  FileImage, FileJson, Fingerprint, FolderOpen, Headphones, Image as ImageIcon,
-  LayoutDashboard, LoaderCircle, Mic, Plus, Printer, Search, Settings,
-  Shield, ShieldAlert, ShieldCheck, Trash2, UploadCloud, Video, X
+  FileImage, FileJson, Fingerprint, FolderOpen, Globe, Headphones, Image as ImageIcon,
+  LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, Mail, Mic, Plus, Printer,
+  Search, Settings, Shield, ShieldAlert, ShieldCheck, Trash2, UploadCloud,
+  UserRound, Video, X
 } from "lucide-react";
+import {
+  createEmailAccount, firebaseConfigured, observeAuth,
+  signInEmail, signInGoogle, signOutUser
+} from "./firebase";
 
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const STORAGE_KEY = "truthlens.saved-investigations.v1";
@@ -52,6 +57,22 @@ function predictionLabel(value = "inconclusive") {
 }
 function cleanReports(reports) {
   return Array.isArray(reports) ? reports.filter((item) => item && item.report_id && Array.isArray(item.assets)) : [];
+}
+function getReportsForUser(uid) {
+  if (!uid) return [];
+  try { return cleanReports(JSON.parse(localStorage.getItem(STORAGE_KEY + "." + uid) || "[]")); }
+  catch { return []; }
+}
+function authErrorMessage(error) {
+  const code = error?.code || "";
+  if (code.includes("email-already-in-use")) return "An account already exists for this email. Sign in instead.";
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) return "Email or password is incorrect.";
+  if (code.includes("weak-password")) return "Choose a password with at least 6 characters.";
+  if (code.includes("invalid-email")) return "Enter a valid email address.";
+  if (code.includes("popup-closed-by-user")) return "Google sign-in was cancelled.";
+  if (code.includes("operation-not-allowed")) return "Enable this sign-in provider in Firebase Console → Authentication → Sign-in method.";
+  if (code.includes("unauthorized-domain")) return "Add localhost to Firebase Authentication → Settings → Authorized domains.";
+  return error?.message || "Authentication failed. Please try again.";
 }
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -262,7 +283,44 @@ function CaseRow({ report, onOpen }) {
   </button>;
 }
 
+function AuthScreen({ mode, setMode, email, setEmail, password, setPassword, displayName, setDisplayName, busy, error, onSubmit, onGoogle }) {
+  const creating = mode === "signup";
+  return <div className="auth-screen">
+    <div className="auth-orbit auth-orbit-a" /><div className="auth-orbit auth-orbit-b" />
+    <div className="auth-card">
+      <div className="auth-brand"><span className="brand-mark"><Fingerprint size={24} /></span>
+        <div><b>TRUTHLENS</b><small>FORENSIC INTELLIGENCE</small></div></div>
+      <span className="section-kicker">SECURE WORKSPACE ACCESS</span>
+      <h1>{creating ? "Create your account." : "Welcome back."}</h1>
+      <p className="auth-subtitle">Sign in to access your investigations, evidence reports and forensic workspace.</p>
+      <form onSubmit={onSubmit} className="auth-form">
+        {creating && <label><span>FULL NAME</span><div className="auth-input"><UserRound size={16} /><input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Your name" required /></div></label>}
+        <label><span>EMAIL ADDRESS</span><div className="auth-input"><Mail size={16} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /></div></label>
+        <label><span>PASSWORD</span><div className="auth-input"><LockKeyhole size={16} /><input type="password" autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" minLength={6} required /></div></label>
+        {error && <div className="auth-error"><AlertTriangle size={15} />{error}</div>}
+        <button className="button button-primary auth-submit" type="submit" disabled={busy}>
+          {busy ? <><LoaderCircle className="spin" size={16} /> Please wait…</> : <>{creating ? "Create account" : "Sign in"} <ArrowRight size={16} /></>}
+        </button>
+      </form>
+      <div className="auth-divider"><span /> OR CONTINUE WITH <span /></div>
+      <button className="button button-quiet auth-google" onClick={onGoogle} disabled={busy}><Globe size={16} /> Continue with Google</button>
+      <p className="auth-switch">{creating ? "Already registered?" : "New to TruthLens?"}
+        <button onClick={() => setMode(creating ? "signin" : "signup")}>{creating ? "Sign in" : "Create an account"}</button>
+      </p>
+      <div className="auth-privacy"><ShieldCheck size={15} /> Firebase-secured sign-in · Your password is never sent to the TruthLens API.</div>
+    </div>
+  </div>;
+}
+
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [page, setPage] = useState("dashboard");
   const [files, setFiles] = useState([]);
   const [context, setContext] = useState("");
@@ -277,17 +335,23 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState("unknown");
   const [apiMessage, setApiMessage] = useState("");
   const [workspaceName, setWorkspaceName] = useState(() => localStorage.getItem("truthlens.workspace-name") || "Forensic workspace");
-  const [savedReports, setSavedReports] = useState(() => {
-    try { return cleanReports(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
-    catch { return []; }
-  });
+  const [savedReports, setSavedReports] = useState([]);
+
+  useEffect(() => observeAuth((nextUser) => {
+    setUser(nextUser);
+    setSavedReports(getReportsForUser(nextUser?.uid));
+    setActiveReport(null);
+    setPage("dashboard");
+    setAuthReady(true);
+    setAuthError("");
+  }), []);
 
   useEffect(() => {
+    if (!user) return;
+    const storageKey = STORAGE_KEY + "." + user.uid;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedReports));
+      localStorage.setItem(storageKey, JSON.stringify(savedReports));
     } catch {
-      // Grad-CAM overlays can be large. Keep the latest reports and omit
-      // embedded overlays only in the storage fallback; explicit exports retain them.
       const compact = (items) => items.map((report) => ({
         ...report,
         assets: report.assets.map((asset) => ({
@@ -302,18 +366,18 @@ export default function App() {
         }))
       }));
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(compact(savedReports.slice(0, 10))));
+        localStorage.setItem(storageKey, JSON.stringify(compact(savedReports.slice(0, 10))));
         setNotice("Case history was saved in compact mode to fit browser storage. JSON/PDF exports remain available.");
       } catch {
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(compact(savedReports.slice(0, 3))));
+          localStorage.setItem(storageKey, JSON.stringify(compact(savedReports.slice(0, 3))));
           setNotice("Browser storage is limited. Only the three most recent compact case reports were retained locally.");
         } catch {
           setNotice("Browser storage is full. Export important cases as JSON or PDF before closing this session.");
         }
       }
     }
-  }, [savedReports]);
+  }, [savedReports, user]);
   useEffect(() => {
     localStorage.setItem("truthlens.workspace-name", workspaceName);
   }, [workspaceName]);
@@ -368,7 +432,9 @@ export default function App() {
     data.append("context_text", context);
     data.append("pair_media", pairMedia ? "true" : "false");
     try {
+      const token = await user.getIdToken();
       const response = await axios.post(API + "/api/analyze", data, {
+        headers: { Authorization: "Bearer " + token },
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000,
         onUploadProgress: (event) => {
@@ -402,7 +468,8 @@ export default function App() {
     setApiStatus("checking");
     setApiMessage("");
     try {
-      const response = await axios.get(API + "/health", { timeout: 8000 });
+      const token = await user.getIdToken();
+      const response = await axios.get(API + "/api/me", { timeout: 8000, headers: { Authorization: "Bearer " + token } });
       setApiStatus("online");
       setApiMessage(response.data.note || "Backend is responding.");
     } catch {
@@ -416,6 +483,36 @@ export default function App() {
     setNotice("");
   }
 
+  async function submitAuth(event) {
+    event.preventDefault();
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      if (authMode === "signup") {
+        if (authPassword.length < 6) throw new Error("Password must contain at least 6 characters.");
+        await createEmailAccount(authName, authEmail, authPassword);
+      } else {
+        await signInEmail(authEmail, authPassword);
+      }
+      setAuthPassword("");
+    } catch (error) {
+      setAuthError(authErrorMessage(error));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+  async function continueWithGoogle() {
+    setAuthBusy(true);
+    setAuthError("");
+    try { await signInGoogle(); }
+    catch (error) { setAuthError(authErrorMessage(error)); }
+    finally { setAuthBusy(false); }
+  }
+  async function logout() {
+    try { await signOutUser(); }
+    catch (error) { setNotice(authErrorMessage(error)); }
+  }
+
   const nav = [
     ["dashboard", "Dashboard", <LayoutDashboard size={17} />],
     ["new", "New investigation", <Plus size={17} />],
@@ -423,6 +520,16 @@ export default function App() {
     ["reports", "Reports", <FileBarChart2 size={17} />],
     ["settings", "Settings", <Settings size={17} />]
   ];
+
+  if (!authReady) return <div className="auth-loading"><LoaderCircle className="spin" size={24} /><span>Securing your TruthLens workspace…</span></div>;
+  if (!user) return <AuthScreen
+    mode={authMode} setMode={(value) => { setAuthMode(value); setAuthError(""); }}
+    email={authEmail} setEmail={setAuthEmail}
+    password={authPassword} setPassword={setAuthPassword}
+    displayName={authName} setDisplayName={setAuthName}
+    busy={authBusy} error={!firebaseConfigured ? "Firebase is not configured. Add the client values to frontend/.env.local, then restart the frontend." : authError}
+    onSubmit={submitAuth} onGoogle={continueWithGoogle}
+  />;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -438,8 +545,9 @@ export default function App() {
           {id === "history" && savedReports.length > 0 && <em>{savedReports.length}</em>}
         </button>)}</nav>
       <div className="sidebar-bottom">
-        <div className="profile-avatar">FA</div><div className="profile-copy"><b>Forensic analyst</b><small>Workspace member</small></div>
+        <div className="profile-avatar">{(user.displayName || user.email || "FA").slice(0, 2).toUpperCase()}</div><div className="profile-copy"><b>{user.displayName || "Forensic analyst"}</b><small>{user.email || "Signed in"}</small></div>
         <button className="profile-settings" onClick={() => setPage("settings")} aria-label="Profile settings"><Settings size={15} /></button>
+        <button className="profile-settings" onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={15} /></button>
       </div>
     </aside>
 
@@ -559,7 +667,8 @@ export default function App() {
         <div className="page-heading"><div><span className="section-kicker">WORKSPACE / CONFIGURATION</span><h1>Settings</h1><p>Manage this local workspace and verify its API connection.</p></div></div>
         <div className="settings-grid">
           <div className="content-panel settings-card"><span className="section-kicker">WORKSPACE PROFILE</span><h2>Workspace identity</h2><label className="field-row"><span>Workspace name</span><input value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></label>
-            <div className="profile-summary"><span className="profile-avatar large">FA</span><div><b>Forensic analyst</b><small>Local workspace profile</small></div></div></div>
+            <div className="profile-summary"><span className="profile-avatar large">{(user.displayName || user.email || "FA").slice(0, 2).toUpperCase()}</span><div><b>{user.displayName || "Forensic analyst"}</b><small>{user.email || "Signed-in account"}</small></div></div>
+            <button className="button button-quiet" onClick={logout}><LogOut size={15} /> Sign out</button></div>
           <div className="content-panel settings-card"><span className="section-kicker">BACKEND CONNECTION</span><h2>TruthLens API</h2><div className="api-url">{API}</div>
             <button className="button button-primary" onClick={checkApi}><Activity size={16} /> Test API connection</button>
             <div className={"connection-state " + apiStatus}><i /> {apiStatus === "online" ? "Backend reachable" : apiStatus === "offline" ? "Backend unreachable" : apiStatus === "checking" ? "Checking connection…" : "Connection not checked"}</div>
