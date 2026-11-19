@@ -25,6 +25,7 @@ from app.services.activity import (
     get_user_report,
     list_user_activity,
     save_report_and_activity,
+    save_ocr_correction,
 )
 from app.services.correlation import correlate_modalities, correlate_text_evidence
 from app.services.integrity import compare_sha256
@@ -414,6 +415,30 @@ def delete_saved_report(
         raise HTTPException(status_code=404, detail="Investigation not found.")
     return {"deleted": True, "report_id": report_id}
 
+
+
+@router.put("/reports/{report_id}/assets/{asset_id}/ocr-correction")
+def put_ocr_correction(
+    report_id: str,
+    asset_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Save a human correction separately; never overwrite machine OCR or auto-verify claims."""
+    corrected_text = str(payload.get("corrected_text", ""))
+    if len(corrected_text) > 12000:
+        raise HTTPException(status_code=400, detail="Corrected text must be 12,000 characters or fewer.")
+    try:
+        return save_ocr_correction(
+            user_uid=str(current_user["uid"]),
+            report_id=report_id,
+            asset_id=asset_id,
+            corrected_text=corrected_text,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/reports/{report_id}/reviews")
