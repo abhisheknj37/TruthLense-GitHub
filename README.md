@@ -10,7 +10,7 @@ TruthLens is a hackathon MVP for inspecting image, video and audio evidence, pre
 - Image decoding, dimensions, format and available EXIF metadata.
 - Video metadata and representative frame sampling.
 - WAV/FLAC/OGG audio metadata and signal-level statistics.
-- Multi-file case intake, context notes and a structured forensic report.
+- Multi-file case intake, context notes, SHA-256 evidence fingerprints and a structured forensic report.
 - Explicit `not_configured` model state until validated authenticity models are connected.
 - React dashboard with evidence intake and report visualization.
 
