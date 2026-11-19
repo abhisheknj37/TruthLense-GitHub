@@ -110,14 +110,10 @@ function exportPdf(report) {
       (asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h3>Image forensic parameters</h3><pre>" + escapeHtml(JSON.stringify(asset.forensic_parameters, null, 2)) + "</pre>" : "") +
       (asset.provenance ? "<h3>Evidence provenance</h3><pre>" + escapeHtml(JSON.stringify(asset.provenance, null, 2)) + "</pre>" : "") +
       (asset.text_extraction ? "<h3>OCR / transcription</h3><pre>" + escapeHtml(JSON.stringify(asset.text_extraction, null, 2)) + "</pre>" : "") +
-      (voiceReview(asset) ? "<h3>Synthetic / cloned-voice review indicator</h3><pre>" + escapeHtml(JSON.stringify(voiceReview(asset), null, 2)) + "</pre>" : "") +
       (asset.video_analysis?.temporal_forensics ? "<h3>Temporal video review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.temporal_forensics, null, 2)) + "</pre>" : "") +
       (asset.video_analysis?.face_identity_consistency ? "<h3>Face consistency review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.face_identity_consistency, null, 2)) + "</pre>" : "") +
       "</section>";
   }).join("");
-  const sourceComparison = report.text_analysis?.source_comparison;
-  const analystReview = report.analyst_review;
-  const voiceReview = (asset) => asset.model_assessment?.voice_synthesis_review;
   const limitations = (report.limitations || []).map((item) => "<li>" + escapeHtml(item) + "</li>").join("");
   const html = "<!doctype html><html><head><title>TruthLens case report</title><style>" +
     "body{font:14px Arial;color:#172033;margin:36px}h1{margin-bottom:4px}h2{font-size:17px}p{line-height:1.5}" +
@@ -133,8 +129,6 @@ function exportPdf(report) {
       "<p><b>" + escapeHtml(item.type || "Review") + " · " + escapeHtml(item.status) +
       ":</b> " + escapeHtml(item.detail || item.note || item.interpretation || JSON.stringify(item)) + "</p>").join("") +
     (report.text_analysis ? "<h2>Text and context review</h2><pre>" + escapeHtml(JSON.stringify(report.text_analysis, null, 2)) + "</pre>" : "") +
-    (sourceComparison ? "<h2>OCR / transcript / caption source comparison</h2><pre>" + escapeHtml(JSON.stringify(sourceComparison, null, 2)) + "</pre>" : "") +
-    (analystReview ? "<h2>Human investigator review</h2><p><b>Decision:</b> " + escapeHtml(analystReview.decision) + "</p><p><b>Reviewer:</b> " + escapeHtml(analystReview.reviewer) + " · " + escapeHtml(analystReview.reviewed_at) + "</p><p><b>Reviewed asset IDs:</b> " + escapeHtml((analystReview.reviewed_asset_ids || []).join(", ")) + "</p><pre>" + escapeHtml(analystReview.notes) + "</pre>" : "<h2>Human investigator review</h2><p>Pending — no analyst decision has been saved.</p>") +
     (report.evidence_events?.length ? "<h2>Hash-linked evidence events</h2><pre>" + escapeHtml(JSON.stringify(report.evidence_events, null, 2)) + "</pre>" : "") +
     "<h2>Limitations and review notes</h2><ul>" + limitations + "</ul>" +
     "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p>" +
@@ -265,12 +259,6 @@ function ModelAssessment({ asset }) {
       </div>
       <p className="model-note">Frames are sampled and assessed independently; this is not temporal or lip-sync detection.</p>
     </div>}
-    {asset.media_type === "audio" && model.voice_synthesis_review && <div className="provenance-note">
-      <b>SYNTHETIC / CLONED-VOICE REVIEW INDICATOR</b>
-      <span>{String(model.voice_synthesis_review.indicator || "inconclusive").replaceAll("_", " ")}</span>
-      <small>{model.voice_synthesis_review.note}</small>
-      <small>{model.voice_synthesis_review.windows_assessed || 0} speech windows reviewed · research-model output, not speaker identification or proof of cloning</small>
-    </div>}
     {asset.media_type === "audio" && segments.length > 0 && <div className="audio-segments">
       <b>Speech segment analysis</b>
       {segments.map((segment, index) => <div className="audio-segment" key={index}>
@@ -330,20 +318,6 @@ function TextContextReview({ report }) {
     </div>)}
     {(result.dates || []).length > 0 && <p><b>Dates extracted:</b> {(result.dates || []).join(", ")}</p>}
     {(result.urls || []).length > 0 && <p><b>URLs supplied:</b> {(result.urls || []).join(", ")}</p>}
-    {result.source_comparison?.sources?.length > 0 && <div className="source-comparison">
-      <b>Evidence text sources</b>
-      <div className="source-comparison-grid">{result.source_comparison.sources.map((source) => <article key={source.source_id}>
-        <small>{String(source.source_type).replaceAll("_", " ")}</small><b>{source.label}</b>
-        <p>{source.text_preview}</p>
-      </article>)}</div>
-      {result.source_comparison.comparisons?.map((comparison, index) => <div className="source-pair" key={index}>
-        <b>{comparison.left_label} ↔ {comparison.right_label}</b>
-        <span>{comparison.interpretation} · {Math.round(comparison.jaccard_similarity * 100)}% token overlap</span>
-        <p>Shared terms: {comparison.shared_terms.join(", ") || "None identified"}</p>
-        <small>{result.source_comparison.limitation}</small>
-      </div>)}
-      <p className="model-note">{result.source_comparison.limitation}</p>
-    </div>}
     {result.claim_verification?.results?.map((item, index) => <div className="observation" key={index}>
       <div><b>Claim · {item.verdict?.replaceAll("_", " ")}</b><p>{item.claim}</p>
         <small>{(item.candidate_sources || []).slice(0, 3).map((source) => source.title + (source.year ? " (" + source.year + ")" : "")).join(" · ") || "No candidate scholarly sources returned"}</small>
@@ -353,75 +327,7 @@ function TextContextReview({ report }) {
   </section>;
 }
 
-function AnalystReview({ report, onSave }) {
-  const existing = report.analyst_review || {};
-  const [decision, setDecision] = useState(existing.decision || "inconclusive");
-  const [notes, setNotes] = useState(existing.notes || "");
-  const [reviewed, setReviewed] = useState(existing.reviewed_asset_ids || []);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setDecision(existing.decision || "inconclusive");
-    setNotes(existing.notes || "");
-    setReviewed(existing.reviewed_asset_ids || []);
-    setError("");
-  }, [report.report_id, existing.reviewed_at]);
-
-  async function submit(event) {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    try {
-      await onSave(report.report_id, {
-        decision,
-        notes,
-        reviewed_asset_ids: reviewed
-      });
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Could not save analyst review.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return <section className="analyst-review-panel">
-    <div className="section-kicker">HUMAN REVIEW & REPORTING</div>
-    <h3>Investigator assessment</h3>
-    {existing.reviewed_at && <p className="model-note">Last saved by {existing.reviewer || "analyst"} · {formatDate(existing.reviewed_at)}</p>}
-    <form onSubmit={submit}>
-      <label className="field-row"><span>Analyst decision</span>
-        <select value={decision} onChange={(event) => setDecision(event.target.value)}>
-          <option value="supports_no_obvious_manipulation">No obvious manipulation indicators found</option>
-          <option value="manipulation_suspected">Manipulation suspected — further verification needed</option>
-          <option value="inconclusive">Inconclusive — evidence is insufficient</option>
-          <option value="escalate_for_more_evidence">Escalate — request more evidence</option>
-        </select>
-      </label>
-      <div className="reviewed-assets"><b>Evidence personally reviewed</b>
-        {report.assets.map((asset) => <label key={asset.asset_id}>
-          <input type="checkbox" checked={reviewed.includes(asset.asset_id)}
-            onChange={(event) => setReviewed((current) => event.target.checked
-              ? [...current, asset.asset_id]
-              : current.filter((id) => id !== asset.asset_id))} />
-          <span>{asset.filename} · {String(asset.media_type).toUpperCase()}</span>
-        </label>)}
-      </div>
-      <label className="field-row"><span>Analyst notes (5–5,000 characters)</span>
-        <textarea value={notes} onChange={(event) => setNotes(event.target.value)}
-          minLength={5} maxLength={5000} required rows={4}
-          placeholder="Describe what you checked, relevant context, limitations and why you selected this assessment." />
-      </label>
-      {error && <div className="error-box">{error}</div>}
-      <button className="button button-primary" type="submit" disabled={saving || notes.trim().length < 5}>
-        {saving ? "Saving review…" : existing.reviewed_at ? "Update analyst review" : "Save analyst review"}
-      </button>
-      <p className="model-note">The human assessment is stored separately from automated signals. It does not certify authenticity or change model output.</p>
-    </form>
-  </section>;
-}
-
-function ReportView({ report, onJson, onPdf, onDownloadOriginal, onSaveReview }) {
+function ReportView({ report, onJson, onPdf, onDownloadOriginal }) {
   const assessed = report.assets.filter((asset) => asset.model_assessment?.status === "model_assessed").length;
   const findings = report.assets.reduce((sum, asset) => sum + (asset.observations || []).filter((item) => item.severity === "warning").length, 0);
   const inconclusive = report.assets.length - assessed;
@@ -437,7 +343,6 @@ function ReportView({ report, onJson, onPdf, onDownloadOriginal, onSaveReview })
       </div>
     </div>
     <TextContextReview report={report} />
-    <AnalystReview report={report} onSave={onSaveReview} />
     <div className="report-stats">
       <div className="report-stat"><span>FILES ANALYSED</span><b>{report.assets.length}</b><small>Evidence items received</small></div>
       <div className="report-stat"><span>MODEL ASSESSMENTS</span><b>{assessed}</b><small>Modality signals available</small></div>
@@ -886,21 +791,6 @@ export default function App() {
     }
   }
 
-  async function saveAnalystReview(reportId, review) {
-    const token = await user.getIdToken();
-    const response = await axios.post(
-      API + "/api/reports/" + encodeURIComponent(reportId) + "/review",
-      review,
-      { timeout: 30000, headers: { Authorization: "Bearer " + token } }
-    );
-    setActiveReport(response.data);
-    setSavedReports((current) => current.map((item) =>
-      item.report_id === reportId ? response.data : item
-    ));
-    setNotice("Analyst review saved to the case report.");
-    return response.data;
-  }
-
   async function openReport(report) {
     const reportId = typeof report === "string" ? report : report.report_id;
     setPage("reports");
@@ -1173,7 +1063,7 @@ export default function App() {
             <div className="notice"><AlertTriangle size={16} /><span>Some files may be inconclusive when there is no detectable face, insufficient speech, decoding errors or unsupported model scope.</span></div>
           </aside>
         </div>
-        {activeReport && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onSaveReview={saveAnalystReview} onJson={() => downloadJson(activeReport)} onPdf={() => {}
+        {activeReport && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
       </section>}
@@ -1182,7 +1072,7 @@ export default function App() {
         <div className="page-heading"><div><span className="section-kicker">{page === "history" ? "WORKSPACE / CASE REGISTER" : "WORKSPACE / REPORT LIBRARY"}</span>
           <h1>{page === "history" ? "Case history" : "Reports"}</h1><p>{page === "history" ? "Reopen saved investigations and continue reviewing the evidence." : "Open completed case reports or export an evidence summary."}</p></div>
           <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> New investigation</button></div>
-        {activeReport && page === "reports" && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onSaveReview={saveAnalystReview} onJson={() => downloadJson(activeReport)} onPdf={() => {}
+        {activeReport && page === "reports" && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
         <div className="content-panel record-list-panel">

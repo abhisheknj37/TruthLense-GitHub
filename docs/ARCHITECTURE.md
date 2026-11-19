@@ -52,3 +52,11 @@ The local hackathon MVP needs isolated media workers, process-level CPU/memory/t
 ## Supabase persistence
 
 When `DATABASE_URL` is configured, the FastAPI backend stores reports, normalized assets, activity, heatmaps and hash-linked chain-of-custody events in Supabase PostgreSQL. Original media is retained in the private `truthlens-evidence` Storage bucket when `SUPABASE_URL` and the backend-only `SUPABASE_SERVICE_ROLE_KEY` are configured. Firebase Auth remains the user identity provider. Local development without these settings retains SQLite. See [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
+
+
+## Evidence text-source comparison and human review
+OCR text from images and sampled video frames, optional ASR transcripts from speech audio, and investigator-provided context are preserved as separately labeled sources. The case report provides token-set Jaccard overlap comparisons, including shared and source-specific terms. This is a lexical triage aid only; it does not understand semantic contradiction or establish factual correctness.
+
+Human review is a separate report block. An authenticated analyst records a decision, notes, reviewed asset IDs, UID and timestamp through `POST /api/reports/{report_id}/review`. SQLite and Supabase persistence update only that case owner's report. Automated model outputs are not overwritten by the reviewer decision.
+
+The audio model additionally exposes a synthetic/spoof-direction indicator with model name and window count. It does not identify a person, establish who generated a voice, or prove voice cloning.

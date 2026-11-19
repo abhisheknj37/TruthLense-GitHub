@@ -72,3 +72,12 @@ def test_saved_heatmap_requires_firebase_bearer_token():
         params={"asset_id": "asset-123", "face_index": 0},
     )
     assert response.status_code == 401
+
+
+
+def test_analyst_review_endpoint_requires_authentication():
+    response = client.post(
+        "/api/reports/report-123/review",
+        json={"decision": "inconclusive", "notes": "Insufficient evidence.", "reviewed_asset_ids": []},
+    )
+    assert response.status_code == 401

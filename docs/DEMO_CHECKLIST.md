@@ -25,3 +25,17 @@
 - The audio model's model card describes a multi-ethnic English training set and says more data are needed. Do not generalize it to all languages, codecs, generators or noisy recordings.
 - Cross-modal comparison compares independent model signals only; it does not prove synchronization, identity or provenance.
 - If a model fails to download/load or the sample is outside the model scope, report inconclusive.
+
+
+## Required cross-modal and text demonstration
+- Use one case containing a face-containing image, a short face-containing video, a speech recording, and investigator-supplied claim/caption text.
+- Ensure image OCR, video-frame OCR and ASR return extracted text; optional integrations must be configured and shown as unavailable when not installed.
+- Open the report and inspect the source-labeled text evidence list. Compare the extracted caption, transcript and investigator claim. The comparison shows token overlap only; manually assess meaning and contradictions.
+- Upload the related separate audio and video files and explicitly select the paired-recording checkbox. Demonstrate modality agreement, disagreement or inconclusive status plus the optional timing/synchronization results when those models are configured.
+- Review the audio panel's synthetic/spoof model indicator and its limitation. Do not claim speaker identification or proof of cloning.
+
+## Human analyst review workflow
+- Open a saved report, select an analyst decision, check each evidence item personally reviewed and enter notes.
+- Save the review, navigate away and reopen the report to confirm the reviewer, timestamp, decision, notes and reviewed assets persist.
+- Export the PDF after saving and confirm the report includes the analyst review, per-asset signals, text-source comparison, cross-modal results and limitations.
+- Verify an unauthenticated request to the review endpoint receives HTTP 401 and another user's UID cannot read or update the case.

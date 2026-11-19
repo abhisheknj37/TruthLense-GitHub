@@ -6,6 +6,7 @@ from app.services.activity import (
     get_user_report,
     list_user_activity,
     save_report_and_activity,
+    save_user_report_review,
 )
 from app.services.integrity import compare_sha256
 
@@ -68,3 +69,44 @@ def test_report_activity_and_heatmap_are_persisted_per_user(tmp_path, monkeypatc
     assert delete_user_report("firebase-user-a", "case-001") is True
     assert get_user_report("firebase-user-a", "case-001") is None
     assert list_user_activity("firebase-user-a") == []
+
+
+
+def test_analyst_review_is_persisted_separately_and_scoped_to_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRUTHLENS_DATABASE_PATH", str(tmp_path / "truthlens.sqlite3"))
+    monkeypatch.setenv("TRUTHLENS_DATA_DIR", str(tmp_path / "data"))
+    report = {
+        "report_id": "case-review-001",
+        "created_at": "2026-11-20T00:00:00+00:00",
+        "overall_status": "model_indicators_available_human_review_required",
+        "summary": "Separate model indicators available.",
+        "assets": [{
+            "asset_id": "asset-a",
+            "filename": "clip.mp4",
+            "media_type": "video",
+            "size_bytes": 123,
+            "sha256": "c" * 64,
+            "analysis_status": "model_assessed",
+            "model_assessment": {},
+            "integrity_verification": {"status": "match"},
+        }],
+        "limitations": ["Human review required."],
+        "human_review_required": True,
+    }
+    save_report_and_activity(user_uid="reviewer-a", report=report, case_title="Review test")
+
+    review = {
+        "status": "completed",
+        "decision": "manipulation_suspected",
+        "notes": "Visible mismatch requires source verification.",
+        "reviewed_asset_ids": ["asset-a"],
+        "reviewed_by_uid": "reviewer-a",
+        "reviewer": "Analyst",
+        "reviewed_at": "2026-11-20T00:01:00+00:00",
+    }
+    assert save_user_report_review("reviewer-a", "case-review-001", review) is True
+    assert save_user_report_review("reviewer-b", "case-review-001", review) is False
+    saved = get_user_report("reviewer-a", "case-review-001")
+    assert saved["analyst_review"]["decision"] == "manipulation_suspected"
+    assert saved["analyst_review"]["reviewed_asset_ids"] == ["asset-a"]
+    assert "analyst_review" not in get_user_report("reviewer-b", "case-review-001") if get_user_report("reviewer-b", "case-review-001") else True

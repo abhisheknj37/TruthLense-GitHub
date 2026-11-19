@@ -208,7 +208,7 @@ async def analyze_case(
                     for frame in text_extraction.get("frames", [])
                     if str(frame.get("text") or "").strip()
                 ]
-                source_text = "\\n".join(frame_lines)
+                source_text = "\n".join(frame_lines)
                 source_type = "video_frame_ocr_caption"
                 source_label = f"On-screen text in {filename}"
             else:

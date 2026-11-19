@@ -66,3 +66,23 @@ def test_optional_integration_status_is_explicit_and_does_not_reveal_paths(monke
     assert status["face_consistency"]["threshold_config_valid"] is False
     assert status["face_consistency"]["review_threshold"] == 0.35
 
+
+
+
+def test_text_source_comparison_keeps_provenance_and_shared_terms():
+    from app.services.text_analysis import compare_text_sources
+
+    result = compare_text_sources([
+        {"source_id": "caption-1", "source_type": "image_ocr_caption", "label": "Image caption", "text": "The city bridge reopened on Monday after repairs."},
+        {"source_id": "transcript-1", "source_type": "audio_transcript", "label": "Audio transcript", "text": "The city bridge reopened on Monday after repairs were complete."},
+        {"source_id": "claim-1", "source_type": "user_supplied_claim_or_caption", "label": "Claim", "text": "The bridge reopened yesterday."},
+    ])
+
+    assert result["status"] == "completed"
+    assert result["source_count"] == 3
+    assert result["comparison_count"] == 3
+    assert result["sources"][0]["source_type"] == "image_ocr_caption"
+    first_pair = result["comparisons"][0]
+    assert "bridge" in first_pair["shared_terms"]
+    assert first_pair["jaccard_similarity"] > 0
+    assert "does not detect semantic contradiction" in result["limitation"]
