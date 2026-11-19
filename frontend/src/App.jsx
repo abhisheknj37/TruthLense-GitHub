@@ -131,15 +131,18 @@ function exportPdf(report) {
   const renderOcr = (data) => {
     if (!data || typeof data !== "object") return "";
     const frames = Array.isArray(data.frames) ? data.frames : [];
+    const previewText = (value) => {
+      const text = String(value || "").replace(/\\s+/g, " ").trim();
+      return text.length > 180 ? text.slice(0, 180) + "… [full text in technical appendix]" : text || "No text recognized";
+    };
     const rows = frames.length ? frames.map((frame) => {
       const confidence = frame.mean_word_confidence ?? frame.confidence;
-      const level = frame.confidence_level || (Number.isFinite(Number(confidence)) ? Number(confidence) < 45 ? "low" : "reported" : "not reported");
       return "<tr><td>" + esc(safeValue("timestamp", frame.timestamp_seconds)) + "</td><td>" +
-        esc(safeValue("frame", frame.frame_index)) + "</td><td class='ocr-text'>" + esc(frame.text || "No text recognized") +
+        esc(safeValue("frame", frame.frame_index)) + "</td><td class='ocr-text'>" + esc(previewText(frame.text)) +
         "</td><td>" + esc(frame.engine || data.engine || "Not recorded") + "</td><td>" +
         esc(confidence == null ? "Not reported" : String(confidence) + (frame.confidence_level ? " · " + frame.confidence_level : "")) +
         "</td><td>" + (frame.analysis_eligible ? "Eligible" : "Not eligible") + "</td></tr>";
-    }).join("") : data.text ? "<tr><td>—</td><td>—</td><td class='ocr-text'>" + esc(data.text) +
+    }).join("") : data.text ? "<tr><td>—</td><td>—</td><td class='ocr-text'>" + esc(previewText(data.text)) +
       "</td><td>" + esc(data.engine || "Not recorded") + "</td><td>" +
       esc(data.mean_word_confidence == null ? "Not reported" : String(data.mean_word_confidence) + " · " + (data.confidence_level || "recognition estimate")) +
       "</td><td>" + (data.analysis_eligible ? "Eligible" : "Not eligible") + "</td></tr>" : "";
@@ -163,14 +166,17 @@ function exportPdf(report) {
     if (!data || typeof data !== "object") return "";
     const samples = Array.isArray(data.samples) ? data.samples : [];
     const model = data.trained_model_assessment || data.model_assessment || {};
-    const metrics = ["decoded_frame_count", "sampled_frames", "sampled_transitions", "scene_change_timestamps_seconds", "motion_discontinuity_timestamps_seconds", "motion_summary"];
-    const summary = {};
-    metrics.forEach((key) => { if (data[key] !== undefined) summary[key] = data[key]; });
-    if (model.status) summary.temporal_model_status = model.status;
-    if (model.note) summary.temporal_model_note = model.note;
-    return "<h4>Temporal video review · heuristic cues</h4><p class='muted'>Optical flow and histogram changes describe sampled motion; they are not a trained deepfake verdict.</p>" +
-      objectTable(summary) + (samples.length ? compactTemporalSamples(samples) : "") +
-      "<p class='muted'>Validated temporal classifier: " + esc(model.status === "model_configured" ? "Configured (validation still required)" : "Not configured / not demonstrated") + ".</p>";
+    const summary = {
+      decoded_frame_count: data.decoded_frame_count ?? "Not recorded",
+      sampled_frames: data.sampled_frames ?? data.sampled_frame_count ?? "Not recorded",
+      sampled_transitions: data.sampled_transitions ?? samples.length,
+      scene_change_count: Array.isArray(data.scene_change_timestamps_seconds) ? data.scene_change_timestamps_seconds.length : "Not recorded",
+      motion_discontinuity_count: Array.isArray(data.motion_discontinuity_timestamps_seconds) ? data.motion_discontinuity_timestamps_seconds.length : "Not recorded",
+      temporal_model_status: model.status || "model_not_configured",
+    };
+    return "<h4>Temporal video review · heuristic summary</h4><p class='muted'>Optical flow and histogram changes are descriptive review cues, not a trained deepfake verdict. Detailed transition measurements are in the technical appendix.</p>" +
+      objectTable(summary) + "<p class='muted'>Validated temporal classifier: " +
+      esc(model.status === "model_configured" ? "Configured; validation status must be assessed separately" : "Not configured / not demonstrated") + ".</p>";
   };
   const renderNested = (value) => {
     if (Array.isArray(value)) {
@@ -258,7 +264,20 @@ function exportPdf(report) {
       "</td><td><code>" + esc(item.event_hash || "Not recorded") + "</code></td></tr>").join("") +
       "</tbody></table>"
     : "<p class='empty'>No evidence events were recorded.</p>";
-  const limitations = (report.limitations || []).map((item) => "<li>" + esc(item) + "</li>").join("");
+  const limitations = (report.limitations || []).map((item) => "<li>" + esc(item) + "</li>").join("");\n  const technicalAppendix = (report.assets || []).map((asset) => {
+    const ocr = asset.text_extraction || {};
+    const frames = Array.isArray(ocr.frames) ? ocr.frames : [];
+    const temporal = asset.video_analysis?.temporal_forensics || {};
+    const samples = Array.isArray(temporal.samples) ? temporal.samples : [];
+    const ocrDetails = frames.length ? "<h4>Full machine OCR · " + esc(asset.filename || "Evidence") + "</h4><table class='data-table compact'><thead><tr><th>Time (s)</th><th>Frame</th><th>Full extracted text</th><th>Engine</th><th>Gate</th></tr></thead><tbody>" +
+      frames.map((frame) => "<tr><td>" + esc(safeValue("time", frame.timestamp_seconds)) + "</td><td>" + esc(safeValue("frame", frame.frame_index)) +
+      "</td><td class='ocr-full'>" + esc(frame.text || "No text recognized") + "</td><td>" + esc(frame.engine || ocr.engine || "Not recorded") +
+      "</td><td>" + (frame.analysis_eligible ? "Eligible" : "Excluded") + "</td></tr>").join("") + "</tbody></table>" : "";
+    const temporalDetails = samples.length ? "<h4>Full temporal transition measurements · " + esc(asset.filename || "Evidence") + "</h4>" +
+      compactTemporalSamples(samples) : "";
+    return ocrDetails + temporalDetails;
+  }).filter(Boolean).join("");
+
   const summaryStatus = getAssessmentStatusLabel(report.overall_status);
   const allowedConclusions = ["authenticity_supported", "manipulation_indicators_identified", "inconclusive", "insufficient_evidence"];
   const caseConclusion = allowedConclusions.includes(report.case_conclusion)
@@ -284,7 +303,7 @@ function exportPdf(report) {
     "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
     ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
     ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.human-correction{border:1px solid #9aaec3;background:#f4f7fa;border-radius:6px;padding:12px;margin:12px 0;break-inside:avoid}.human-correction h4{margin-top:0}.human-correction pre{white-space:pre-wrap;overflow-wrap:anywhere}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
-    ".page-section{break-inside:auto}thead{display:table-header-group}tr,.finding,.review-row,.human-correction{break-inside:avoid}.ocr-table{font-size:7.5pt}.ocr-table th{width:auto}.ocr-table td{font-size:7.5pt}.ocr-text{white-space:pre-wrap;max-width:220px}.ocr-warning{background:#fff4df;border-left:3px solid #b7791f;padding:8px 10px;color:#704b12}.asset{padding:12px;margin:8px 0 12px}h2{margin:18px 0 8px}h4{margin:12px 0 5px}.data-table th,.data-table td{padding:5px 6px}@media print{a{color:inherit;text-decoration:none}.asset{break-inside:auto}}" +
+    ".page-section{break-inside:auto}thead{display:table-header-group}tr,.finding,.review-row,.human-correction{break-inside:avoid}.ocr-table{font-size:7.5pt}.ocr-table th{width:auto}.ocr-table td{font-size:7.5pt}.ocr-text{white-space:pre-wrap;max-width:180px}.ocr-full{white-space:pre-wrap;overflow-wrap:anywhere}.ocr-warning{background:#fff4df;border-left:3px solid #b7791f;padding:8px 10px;color:#704b12}.asset{padding:12px;margin:8px 0 12px}h2{margin:18px 0 8px}h4{margin:12px 0 5px}.data-table th,.data-table td{padding:5px 6px}@media print{a{color:inherit;text-decoration:none}.asset{break-inside:auto}}" +
     "</style></head><body>" +
     "<header class='cover'><div class='brand'>TRUTHLENS / DIGITAL FORENSICS</div><h1>Forensic Case Report</h1>" +
     "<div class='case-meta'>Case reference: " + esc(report.report_id) + "<br>Generated: " + humanDate(new Date().toISOString()) +
@@ -300,7 +319,8 @@ function exportPdf(report) {
     (report.text_analysis ? "<h2>04 · Text and claim-context review</h2>" + objectTable(report.text_analysis) : "") +
     "<h2>05 · Investigator decisions</h2><p class='section-intro'>Human decisions are recorded separately from automated model outputs.</p>" + reviews +
     "<h2>06 · Evidence event history</h2>" + events +
-    "<h2>07 · Limitations, caveats and required follow-up</h2><ul>" + (limitations || "<li>No limitations were supplied by the analysis service.</li>") + "</ul>" +
+    (technicalAppendix ? "<h2>07 · Technical appendix · full OCR and temporal measurements</h2><p class='section-intro'>Full machine OCR and per-transition measurements are retained here for traceability. OCR text excluded by the quality gate is not used for claim-context analysis.</p>" + technicalAppendix : "") +
+    "<h2>08 · Limitations, caveats and required follow-up</h2><ul>" + (limitations || "<li>No limitations were supplied by the analysis service.</li>") + "</ul>" +
     "<div class='summary'><b>Interpretation notice</b><p>Model scores are not calibrated probabilities or proof of authenticity. A matching SHA-256 digest establishes byte-level consistency for the received file, not creator identity or content truth. Findings require qualified human review and original-source context.</p></div>" +
     "<div class='footer'>TRUTHLENS · Confidential investigative working document · Preserve original source media and maintain chain-of-custody records separately.</div>" +
     "<script>window.onload=function(){window.print()}<\/script></body></html>";
