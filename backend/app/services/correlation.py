@@ -121,7 +121,7 @@ def correlate_text_evidence(
                 "detail": (
                     "Text sources share vocabulary. This does not establish that their claims agree or are true."
                     if overlap >= 0.15 else
-                    "Little vocabulary is shared. This does not establish contradiction or falsehood; paraphrases, OCR errors and different topics can reduce overlap."
+                    "Little vocabulary is shared. This is not proof of contradiction or falsehood; paraphrases, OCR errors and different topics can reduce overlap."
                 ),
                 "method": "case-insensitive token Jaccard overlap; no semantic entailment model",
                 "shared_term_count": len(left & right),

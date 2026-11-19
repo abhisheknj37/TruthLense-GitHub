@@ -15,7 +15,7 @@ def test_group_aggregation_counts_each_source_once_with_median():
     labels, scores, count = aggregate_groups(rows, "video_id")
     assert count == 2
     assert labels == [1, 0]
-    assert scores == [0.85, 0.15]
+    assert scores == pytest.approx([0.85, 0.15])
     metrics = calculate_metrics(labels, scores, 0.65)
     assert metrics["sample_count"] == 2
     assert metrics["accuracy"] == 1.0
