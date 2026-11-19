@@ -6,7 +6,20 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 
 > A model score is not proof that media is real or fake. Every finding remains reviewable and may be inconclusive.
 
+## Workspace capabilities
+
+- **Dashboard:** workspace overview, saved-case metrics, recent investigations and the four-stage review workflow.
+- **New investigation:** drag-and-drop evidence intake, image thumbnails, video previews, audio playback cards, per-file validation, removal and total upload-size summary.
+- **Analysis pipeline:** media inspection, modality analysis, evidence correlation, then human review and reporting. Browser upload progress is shown; the API does not currently stream model-stage progress.
+- **Reports:** image face regions and optional Grad-CAM-style patch attribution, sampled video-frame timeline, audio speech-window scores, metadata, SHA-256 fingerprint and cross-modal comparison.
+- **Case history:** reopen prior investigations, search saved cases, and remove local report records.
+- **Exports:** JSON download and print-friendly report that can be saved as PDF from the browser print dialog.
+- **Settings:** local workspace label and API health check.
+
+Completed case reports are stored in the current browser's local storage. They are not synchronized to a server or shared across browsers/devices. The upload previews are temporary browser object URLs. The API processes uploaded media using temporary working copies and removes those copies after analysis.
+
 ## Current model-backed pipelines
+
 - **Image:** face crops → DeiTFake ViT image classifier → per-face score, heuristic uncertainty band and Grad-CAM-style patch attribution.
 - **Video:** up to eight evenly spaced frames → same face-image classifier → timestamped frame results and clip-level median over face-bearing frames.
 - **Audio:** 16 kHz mono speech windows → Wav2Vec2 classifier → segment scores and median summary.
@@ -14,6 +27,7 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 - **Evidence:** SHA-256 fingerprint, media metadata and structured JSON report.
 
 ## Selected pretrained models
+
 - Image: [sakshamkr1/deitfake-v2](https://huggingface.co/sakshamkr1/deitfake-v2) — Apache-2.0 model card; trained on face-cropped images from an OpenForensics-derived dataset; research/educational use.
 - Audio: [Hemgg/Deepfake-audio-detection](https://huggingface.co/Hemgg/Deepfake-audio-detection) — Apache-2.0 model card; Wav2Vec2 base, multi-ethnic English audio dataset, approximately 16 kHz.
 
@@ -21,14 +35,16 @@ The model cards report their own evaluation metrics. Those numbers are not Truth
 
 ## Run on Windows PowerShell
 
-**First sync the latest project branch from the repository root.** This prevents an older local copy of `requirements.txt` from omitting ML packages such as Transformers.
+First clone or update the advanced project branch:
 
 ```powershell
+git clone --branch feature/truthlens-advanced-mvp https://github.com/abhisheknj37/TruthLense.git
+# or, inside an existing clone:
 git switch feature/truthlens-advanced-mvp
 git pull origin feature/truthlens-advanced-mvp
 ```
 
-Backend terminal (from the repository root):
+Backend terminal:
 
 ```powershell
 cd backend
@@ -38,7 +54,7 @@ py -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-Frontend terminal (from the repository root, in a separate terminal):
+Frontend terminal (in a second PowerShell window):
 
 ```powershell
 cd frontend
@@ -50,12 +66,23 @@ Open the frontend at http://localhost:5173 and API docs at http://127.0.0.1:8000
 
 **First-run note:** PyTorch/Transformers installation and the first model download can be large. The image model loads only when an image with a detected face is analyzed; the audio model loads when an audio file is analyzed. CPU inference works but may be slow. If Windows Application Control blocks an executable, use an administrator-approved Python environment; do not disable security controls to work around the policy.
 
+## Supported evidence formats
+
+- Images: JPG, JPEG, PNG, WEBP, BMP, TIF, TIFF
+- Video: MP4, MOV, AVI, MKV, WEBM
+- Audio: WAV, FLAC, OGG
+- Up to 8 files per case; maximum 40 MB per file
+
+Document uploads such as PDF, DOCX and XLSX are not supported by the current analysis API and are therefore not offered as evidence types in this version.
+
 ## Safety and limitations
+
 - Image model is face-crop focused; a no-face image returns inconclusive.
 - Video is sampled frame classification, not temporal forensics or lip-sync analysis.
 - Audio results may not generalize beyond the model's limited training scope.
 - Softmax outputs and 0.35/0.65 score bands are not calibrated probabilities.
 - Cross-modal agreement is not proof of authenticity or synchronization.
-- Uploaded files are never executed. Public deployment requires isolated processing and stronger security controls.
+- Browser case history is local to one browser profile and is not a server-side case-management database.
+- Uploaded files are never executed. Public deployment requires isolated processing, authentication, rate limits and stronger security controls.
 
 See `docs/ARCHITECTURE.md`, `docs/EVALUATION.md` and `docs/DEMO_CHECKLIST.md`.
