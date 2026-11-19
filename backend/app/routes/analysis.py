@@ -26,7 +26,7 @@ from app.services.activity import (
     list_user_activity,
     save_report_and_activity,
 )
-from app.services.correlation import correlate_modalities
+from app.services.correlation import correlate_modalities, correlate_text_evidence
 from app.services.integrity import compare_sha256
 from app.services.media import MediaError, inspect_media
 from app.services.provenance import inspect_provenance
@@ -268,6 +268,10 @@ async def analyze_case(
     text_analysis = analyze_text_context(combined_text)
     if combined_text:
         text_analysis["claim_verification"] = await verify_claims(combined_text)
+    cross_modal.extend(correlate_text_evidence(
+        [asset.model_dump() for asset in assets],
+        context_text,
+    ))
     report_id = str(uuid4())
     evidence_events = append_case_events(
         report_id,
