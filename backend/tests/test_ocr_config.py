@@ -205,3 +205,27 @@ def test_video_ocr_falls_back_to_rapidocr_when_pytesseract_is_missing(monkeypatc
     assert result["engine"] == "RapidOCR"
     assert result["frames"][0]["timestamp_seconds"] == 1.5
     assert result["frames"][0]["analysis_eligible"] is True
+
+
+def test_ocr_comparison_does_not_compare_rapidocr_with_itself(monkeypatch, tmp_path):
+    from app.services import ocr
+
+    calls = {"rapid": 0}
+    monkeypatch.setattr(
+        ocr, "extract_image_text",
+        lambda path: {
+            "status": "completed", "engine": "RapidOCR",
+            "text": "Bridge reopened Monday.", "confidence_level": "unscored",
+        },
+    )
+    monkeypatch.setattr(
+        ocr, "_rapidocr_extract",
+        lambda image: calls.__setitem__("rapid", calls["rapid"] + 1) or {
+            "status": "completed", "engine": "RapidOCR", "text": "Bridge reopened Monday."
+        },
+    )
+    result = ocr.compare_ocr_engines(tmp_path / "unused.png")
+    assert result["status"] == "single_engine_fallback"
+    assert result["engines"]["rapidocr"]["status"] == "not_independent"
+    assert result["agreement"]["character_similarity"] is None
+    assert calls["rapid"] == 0

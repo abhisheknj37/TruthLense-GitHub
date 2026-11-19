@@ -461,6 +461,20 @@ def _normalized_edit_distance(reference: str, hypothesis: str) -> dict[str, Any]
 def compare_ocr_engines(path: Path) -> dict[str, Any]:
     """Compare both OCR engines on identical image bytes; never auto-select truth."""
     tesseract = extract_image_text(path)
+    if tesseract.get("engine") != "Tesseract OCR":
+        return {
+            "status": "single_engine_fallback",
+            "engines": {
+                "primary": tesseract,
+                "rapidocr": {
+                    "status": "not_independent",
+                    "engine": "RapidOCR",
+                    "note": "RapidOCR was already used as the primary fallback; its output is not compared with itself.",
+                },
+            },
+            "agreement": {"normalized_exact_match": None, "character_similarity": None},
+            "note": "Only one independent OCR engine was available. No cross-engine agreement score was calculated.",
+        }
     try:
         with Image.open(path) as source:
             rapid = _rapidocr_extract(source.copy())
