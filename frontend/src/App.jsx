@@ -573,6 +573,8 @@ export default function App() {
     item.assets.some((asset) => asset.filename.toLowerCase().includes(search.toLowerCase()))
   );
   const reviewedAssets = activityEvents.reduce((sum, item) => sum + item.evidence_count, 0);
+  const verifiedAssetsCount = activityEvents.reduce((sum, item) => sum + item.verified_count, 0);
+  const integrityPercent = reviewedAssets ? Math.round((verifiedAssetsCount / reviewedAssets) * 100) : 0;
 
   function addFiles(selected) {
     const next = [...files];
@@ -830,7 +832,7 @@ export default function App() {
           </div>
           <div className="content-panel analysis-summary">
             <div className="panel-title"><div><span className="section-kicker">AI ANALYSIS SUMMARY</span><h2>Multimodal review</h2></div><ShieldCheck size={20} /></div>
-            <div className="analysis-summary-body"><div className="analysis-ring"><div><b>4</b><small>Review stages</small></div></div>
+            <div className="analysis-summary-body"><div className="analysis-ring" style={{ background: "conic-gradient(#0edbd0 0 " + integrityPercent + "%, #123c48 " + integrityPercent + "% 100%)" }}><div><b>{integrityPercent}%</b><small>Hash match rate</small></div></div>
               <div className="analysis-checks">
                 <span><CheckCircle2 size={16} /> Face-region analysis</span>
                 <span><CheckCircle2 size={16} /> Video frame sampling</span>
