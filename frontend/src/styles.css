@@ -968,3 +968,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .semantic-candidate.contradiction_candidate{background:#fff0f1;color:#b44956}
 .semantic-candidate.mutual_entailment_candidate{background:#e8f7ef;color:#177f54}
 .semantic-candidate.one_way_entailment_candidate{background:#fff5e2;color:#9a6b1d}
+
+
+/* Private original-evidence retention choice and retrieval */
+.retention-option{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:12px;border:1px solid #d7e4f4;border-radius:10px;background:#f6f9ff;color:#29496e}
+.retention-option input{margin-top:2px;accent-color:#176ee4}
+.retention-option span{display:grid;gap:4px}
+.retention-option b{font-size:10px;color:#264a77}
+.retention-option small{font-size:9px;line-height:1.55;color:#778da9}
+.original-retained{display:grid;gap:8px}
+.original-retained button{justify-self:start}
+.original-not-retained{margin:10px 0;padding:9px 11px;border:1px dashed #d6e1ed;border-radius:8px;color:#7185a0;font-size:9px;line-height:1.55;background:#f8fbff}

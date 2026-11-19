@@ -536,6 +536,24 @@ function EvidenceCard({ asset, reportId, user }) {
   const [correctedText, setCorrectedText] = useState(extraction.investigator_correction?.text ?? extraction.text ?? "");
   const [correctionStatus, setCorrectionStatus] = useState("");
   const [savingCorrection, setSavingCorrection] = useState(false);
+  async function downloadOriginal() {
+    if (!asset.evidence_storage || asset.evidence_storage.status !== "retained") return;
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get(
+        API + "/api/reports/" + encodeURIComponent(reportId) + "/assets/" + encodeURIComponent(asset.asset_id) + "/original",
+        { responseType: "blob", timeout: 30000, headers: { Authorization: "Bearer " + token } }
+      );
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = asset.filename || "evidence";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setCorrectionStatus(error.response?.data?.detail || "Original evidence could not be downloaded.");
+    }
+  }
   async function saveCorrection() {
     if (!user || !reportId || !asset.asset_id) return;
     setSavingCorrection(true);
@@ -563,6 +581,11 @@ function EvidenceCard({ asset, reportId, user }) {
     </div>
     <div className="hash-line"><small><Fingerprint size={12} /> SHA-256 EVIDENCE FINGERPRINT</small><code>{asset.sha256}</code>
       <span className={"hash-verification " + (asset.integrity_verification?.status || "recorded")}>{asset.integrity_verification?.status === "match" ? "✓ Browser and API digests match" : asset.integrity_verification?.status === "mismatch" ? "⚠ Digest mismatch — review required" : "Fingerprint recorded · not rechecked"}</span></div>
+    {asset.evidence_storage?.status === "retained" ? <div className="provenance-note original-retained">
+      <b>ORIGINAL EVIDENCE RETAINED</b>
+      <span>Private backend copy · expires {formatDate(asset.evidence_storage.expires_at)}</span>
+      <button className="button button-quiet" onClick={downloadOriginal}><Download size={14}/> Download original</button>
+    </div> : <div className="original-not-retained">Original file was not retained. SHA-256 and analysis metadata remain in this case.</div>}
     <ForensicParameters asset={asset} />
     {asset.provenance && <div className="provenance-note"><b>PROVENANCE</b>
       <span>SHA-256 recorded · C2PA: {asset.provenance.content_credentials?.status || "not verified"}</span>
@@ -1026,6 +1049,7 @@ export default function App() {
   const [context, setContext] = useState("");
   const [caseTitle, setCaseTitle] = useState("");
   const [pairMedia, setPairMedia] = useState(false);
+  const [retainOriginals, setRetainOriginals] = useState(false);
   const [audioTestMode, setAudioTestMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -1211,6 +1235,7 @@ export default function App() {
     setContext("");
     setCaseTitle("");
     setPairMedia(false);
+    setRetainOriginals(false);
     setAudioTestMode(false);
     setError("");
   }
@@ -1225,6 +1250,7 @@ export default function App() {
     files.forEach((item) => data.append("files", item.file));
     data.append("context_text", context);
     data.append("pair_media", pairMedia ? "true" : "false");
+    data.append("retain_originals", retainOriginals ? "true" : "false");
     data.append("case_title", caseTitle.trim());
     try {
       const preUploadDigests = await Promise.all(files.map((item) => sha256Hex(item.file)));
@@ -1508,6 +1534,10 @@ export default function App() {
               </div>)}</div>
               <div className="upload-total"><span>Total evidence payload</span><b>{formatBytes(totalSize)}</b></div>
             </div>}
+            <label className="retention-option">
+              <input type="checkbox" checked={retainOriginals} onChange={(event) => setRetainOriginals(event.target.checked)} />
+              <span><b>Retain original evidence securely</b><small>Optional. Saves the uploaded original in private backend storage for the configured retention period. You can download it from this report or delete it with the case.</small></span>
+            </label>
             <div className="field-row"><label htmlFor="caseTitle">CASE NAME <span>OPTIONAL</span></label><input id="caseTitle" value={caseTitle} onChange={(event) => setCaseTitle(event.target.value)} placeholder="e.g. Social media clip review – Case 014" /></div>
             <div className="field-row"><label htmlFor="context">INVESTIGATION NOTES <span>OPTIONAL</span></label>
               <textarea id="context" value={context} onChange={(event) => setContext(event.target.value)} placeholder="Source details, claimed context, known timeline, transcript or analyst notes…" rows={4} /></div>

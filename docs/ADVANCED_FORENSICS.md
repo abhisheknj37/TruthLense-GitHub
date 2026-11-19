@@ -152,3 +152,10 @@ TruthLens accepts bounded UTF-8 `.txt` and `.md` evidence files (maximum 1 MB ea
 Optional sentence-pair NLI review can be enabled by setting `TRUTHLENS_NLI_MODEL=cross-encoder/nli-deberta-v3-base`. This Apache-2.0 English NLI checkpoint exposes contradiction, entailment and neutral labels. Its model card reports 92.38% SNLI test accuracy and 90.04% MNLI mismatched accuracy; these are checkpoint-reported benchmark results, not TruthLens results. The local NLI module compares sentence pairs in both directions and returns candidate relationships with raw uncalibrated softmax scores. It does not verify a claim, establish what happened, or replace source inspection. Model weights load lazily on first semantic comparison; without the configuration, TruthLens reports NLI as not configured and retains lexical comparisons.
 
 Model card: https://huggingface.co/cross-encoder/nli-deberta-v3-base
+
+
+## Original evidence retention and signed custody
+
+Original uploads are not retained unless the investigator checks the per-case retention option. Opted-in originals are stored under a private backend-only directory, separated by a SHA-256-derived owner folder, report UUID and asset UUID. The report records the storage key, digest, size, timestamp and expiry. Authenticated downloads re-check report ownership and the stored file digest. Deleting the case removes its originals. Configure `TRUTHLENS_ORIGINALS_DIR` to a private durable volume and `TRUTHLENS_ORIGINAL_RETENTION_DAYS` to the chosen retention period.
+
+The chain-of-custody API also exports a JSON manifest. Set a strong server-only `TRUTHLENS_LEDGER_HMAC_KEY` and `TRUTHLENS_LEDGER_KEY_ID` to add HMAC-SHA256 signatures over event hashes. Verification checks the local hash chain and HMAC signatures. This is stronger tamper evidence against edits by actors without the secret, but it is still not an independently timestamped or externally witnessed record. Never commit secrets or retained evidence directories.

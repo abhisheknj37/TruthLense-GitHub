@@ -16,7 +16,7 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 - **Exports:** JSON download and print-friendly report that can be saved as PDF from the browser print dialog.
 - **Settings:** local workspace label and API health check.
 
-Completed reports, activity events, evidence metadata, SHA-256 verification results and generated model-attribution PNGs are persisted by the backend, scoped to the verified Firebase UID. The dashboard polls the authenticated activity feed every 8 seconds; case history and reports are loaded from the API and can be accessed across browsers/devices that sign in to the same account. Original uploaded media is processed from temporary working copies and removed after analysis; it is not retained as a case attachment. By default, the SQLite database and heatmap artifacts are stored under `backend/data/`. Back up and protect this directory in deployment.
+Completed reports, activity events, evidence metadata, SHA-256 verification results and generated model-attribution PNGs are persisted by the backend, scoped to the verified Firebase UID. The dashboard polls the authenticated activity feed every 8 seconds; case history and reports are loaded from the API and can be accessed across browsers/devices that sign in to the same account. Original uploaded media is processed from temporary working copies by default and removed after analysis. Investigators may explicitly opt in to private original retention per case; retained files have a configurable expiry and authenticated download. By default, the SQLite database and heatmap artifacts are stored under `backend/data/`. Back up and protect this directory in deployment.
 
 ## Authentication
 
