@@ -18,7 +18,7 @@ class FakeClient:
     def __exit__(self, *args):
         return False
 
-    def post(self, url, headers, json):
+    def post(self, url, headers, json, params=None):
         self.calls.append((url, json))
         return FakeResponse()
 
