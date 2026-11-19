@@ -135,41 +135,46 @@ class ImageDeepfakeDetector:
         inputs = self.processor(images=face, return_tensors="pt")
         inputs = {key: value.to(self.device) for key, value in inputs.items()}
         cam_b64 = None
+        cam_note = None
         with self.lock:
             if make_cam:
-                layer = _find_encoder_layer(self.model)
-                captured: dict[str, torch.Tensor] = {}
-
-                def capture(_module, _inputs, output):
-                    hidden = output[0] if isinstance(output, (tuple, list)) else output
-                    captured["tokens"] = hidden
-
-                handle = layer.register_forward_hook(capture)
                 try:
-                    with torch.enable_grad():
+                    layer = _find_encoder_layer(self.model)
+                    captured: dict[str, torch.Tensor] = {}
+
+                    def capture(_module, _inputs, output):
+                        hidden = output[0] if isinstance(output, (tuple, list)) else output
+                        captured["tokens"] = hidden
+
+                    handle = layer.register_forward_hook(capture)
+                    try:
+                        with torch.enable_grad():
+                            outputs = self.model(**inputs)
+                            tokens = captured.get("tokens")
+                            if tokens is not None and tokens.ndim == 3 and tokens.requires_grad:
+                                score = outputs.logits[0, self.fake_index]
+                                gradients = torch.autograd.grad(score, tokens, retain_graph=False)[0]
+                                weights = gradients.mean(dim=1, keepdim=True)
+                                patch_map = torch.relu((tokens * weights).sum(dim=-1))[0]
+                                token_count = patch_map.shape[0]
+                                prefix = 1 if int(np.sqrt(max(token_count - 1, 0))) ** 2 == token_count - 1 else 2
+                                patch_map = patch_map[prefix:]
+                                grid = int(np.sqrt(patch_map.numel()))
+                                if grid * grid == patch_map.numel():
+                                    patch_map = patch_map.reshape(1, 1, grid, grid)
+                                    patch_map = F.interpolate(
+                                        patch_map, size=(224, 224), mode="bilinear", align_corners=False
+                                    )[0, 0].detach().cpu().numpy()
+                                    low, high = float(patch_map.min()), float(patch_map.max())
+                                    if high > low:
+                                        patch_map = (patch_map - low) / (high - low)
+                                        cam_b64 = self._overlay_base64(face, patch_map)
+                    finally:
+                        handle.remove()
+                except Exception as exc:
+                    cam_note = f"Patch attribution unavailable: {exc}"
+                    with torch.no_grad():
                         outputs = self.model(**inputs)
-                        tokens = captured.get("tokens")
-                        if tokens is not None and tokens.ndim == 3 and tokens.requires_grad:
-                            score = outputs.logits[0, self.fake_index]
-                            gradients = torch.autograd.grad(score, tokens, retain_graph=False)[0]
-                            weights = gradients.mean(dim=1, keepdim=True)
-                            patch_map = torch.relu((tokens * weights).sum(dim=-1))[0]
-                            token_count = patch_map.shape[0]
-                            # DeiT has one CLS token; tolerate a second prefix token if present.
-                            prefix = 1 if int(np.sqrt(max(token_count - 1, 0))) ** 2 == token_count - 1 else 2
-                            patch_map = patch_map[prefix:]
-                            grid = int(np.sqrt(patch_map.numel()))
-                            if grid * grid == patch_map.numel():
-                                patch_map = patch_map.reshape(1, 1, grid, grid)
-                                patch_map = F.interpolate(
-                                    patch_map, size=(224, 224), mode="bilinear", align_corners=False
-                                )[0, 0].detach().cpu().numpy()
-                                low, high = float(patch_map.min()), float(patch_map.max())
-                                if high > low:
-                                    patch_map = (patch_map - low) / (high - low)
-                                    cam_b64 = self._overlay_base64(face, patch_map)
-                finally:
-                    handle.remove()
             else:
                 with torch.no_grad():
                     outputs = self.model(**inputs)
@@ -189,6 +194,7 @@ class ImageDeepfakeDetector:
             "model_score_type": "softmax_score_not_calibrated_probability",
             "uncertainty_band": _uncertainty_band(fake_score),
             "gradcam_overlay_base64": cam_b64,
+            "gradcam_note": cam_note,
         }
 
     def analyze_pil_frame(self, image: Image.Image, include_cam: bool = False) -> dict[str, Any]:
