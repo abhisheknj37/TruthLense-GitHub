@@ -185,6 +185,12 @@ class ImageDeepfakeDetector:
         Image.fromarray(overlay).save(output, format="PNG")
         return base64.b64encode(output.getvalue()).decode("ascii")
 
+    @staticmethod
+    def _crop_preview_base64(face: Image.Image) -> str:
+        output = io.BytesIO()
+        face.convert("RGB").resize((256, 256)).save(output, format="JPEG", quality=82)
+        return base64.b64encode(output.getvalue()).decode("ascii")
+
     def _predict_crop(self, face: Image.Image, make_cam: bool) -> dict[str, Any]:
         self._load()
         inputs = self.processor(images=face, return_tensors="pt")
@@ -261,7 +267,7 @@ class ImageDeepfakeDetector:
             faces = []
             for index, (crop, box) in enumerate(crops):
                 result = self._predict_crop(crop, include_cam and index == 0)
-                result.update({"face_index": index, "bounding_box_xywh": box})
+                result.update({"face_index": index, "bounding_box_xywh": box, "crop_preview_base64": self._crop_preview_base64(crop)})
                 faces.append(result)
             values = [face["scores"]["fake"] for face in faces]
             median_fake = float(np.median(values))
@@ -270,6 +276,12 @@ class ImageDeepfakeDetector:
                 "status": "model_assessed", "model_name": MODEL_ID,
                 "prediction": prediction,
                 "scores": {"fake_median_across_detected_faces": round(median_fake, 5), "real_median_across_detected_faces": round(1 - median_fake, 5)},
+                "aggregation": {
+                    "method": "median",
+                    "face_count": len(faces),
+                    "individual_fake_scores": [round(value, 5) for value in values],
+                    "explanation": "The median is the middle face score (or mean of the two middle scores). It reduces the influence of a single unusually high or low face score; it is not a calibrated probability.",
+                },
                 "model_score_type": "median_softmax_score_not_calibrated_probability",
                 "uncertainty_band": _uncertainty_band(median_fake),
                 "faces": faces,
@@ -281,7 +293,7 @@ class ImageDeepfakeDetector:
     def analyze_image(self, path: Path, include_cam: bool = True) -> dict[str, Any]:
         try:
             with Image.open(path) as raw:
-                image = raw.convert("RGB")
+                image = ImageOps.exif_transpose(raw).convert("RGB")
             crops = self._face_crops(image)
             if not crops:
                 return {
@@ -294,7 +306,7 @@ class ImageDeepfakeDetector:
             faces = []
             for index, (crop, box) in enumerate(crops):
                 result = self._predict_crop(crop, include_cam and index == 0)
-                result.update({"face_index": index, "bounding_box_xywh": box})
+                result.update({"face_index": index, "bounding_box_xywh": box, "crop_preview_base64": self._crop_preview_base64(crop)})
                 faces.append(result)
             scores = [face["scores"]["fake"] for face in faces]
             median_fake = float(np.median(scores))
@@ -313,6 +325,12 @@ class ImageDeepfakeDetector:
                 "scores": {
                     "fake_median_across_detected_faces": round(median_fake, 5),
                     "real_median_across_detected_faces": round(1 - median_fake, 5),
+                },
+                "aggregation": {
+                    "method": "median",
+                    "face_count": len(faces),
+                    "individual_fake_scores": [round(value, 5) for value in scores],
+                    "explanation": "The median is the middle face score (or mean of the two middle scores). It reduces the influence of one extreme face score; it is not a calibrated probability.",
                 },
                 "model_score_type": "median_softmax_score_not_calibrated_probability",
                 "uncertainty_band": _uncertainty_band(median_fake),

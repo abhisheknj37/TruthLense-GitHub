@@ -24,10 +24,10 @@ def extract_image_text(path: Path) -> dict[str, Any]:
     try:
         _configure_tesseract(pytesseract)
         with Image.open(path) as image:
-            text = pytesseract.image_to_string(image).strip()
-        return {"status": "completed", "text": text[:12000], "engine": "Tesseract OCR", "note": "OCR may contain recognition errors; verify against the original image."}
+            text = pytesseract.image_to_string(image.convert('RGB'), config='--psm 11').strip()
+        return {"status": "completed" if text else "completed_no_text", "text": text[:12000], "engine": "Tesseract OCR", "character_count": len(text), "note": "OCR is best-effort extraction; verify against the original image."}
     except Exception as exc:
-        return {"status": "error", "text": "", "note": f"OCR could not process this image: {type(exc).__name__}."}
+        return {"status": "engine_not_found" if "TesseractNotFoundError" in type(exc).__name__ else "error", "text": "", "note": "Tesseract executable not found. Install Tesseract and set TRUTHLENS_TESSERACT_CMD." if "TesseractNotFoundError" in type(exc).__name__ else f"OCR could not process this image: {type(exc).__name__}."}
 
 
 def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
