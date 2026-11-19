@@ -73,3 +73,6 @@ When OpenAlex returns an abstract, TruthLens can compare the extracted claim aga
 ## Source-group score evaluation
 
 Use `evaluate_scores.py` with `--group-column video_id` (or another independent source ID) to report both row-level metrics and source-level metrics. Source-level scoring takes the median fake-direction score within each group so a video with many frames does not dominate a test set. The same source identifier must cover every frame/window/crop derived from one original item. Groups with conflicting labels are rejected. Prefer source-level metrics when presenting detector performance to evaluators.
+
+
+Calibration fits and evaluates on one sample per independent source group. When a source contributes multiple frames, windows or crops, TruthLens aggregates their fake-direction scores using the median and requires one consistent source label. This prevents sources with many derived samples from dominating the calibration mapping or held-out metrics. The minimum of 60 refers to independent source groups, not raw rows.

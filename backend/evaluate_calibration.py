@@ -6,6 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from sklearn.calibration import IsotonicRegression
@@ -104,29 +105,49 @@ def main():
             f"CSV must contain columns: {', '.join(sorted(required_columns))}. "
             "The group column is mandatory to prevent source leakage."
         )
-    try:
-        labels = np.asarray([int(float(row[args.label_column])) for row in rows], dtype=np.int64)
-        scores = np.asarray([float(row[args.score_column]) for row in rows], dtype=np.float64)
-        groups = np.asarray([str(row[args.group_column]).strip() for row in rows], dtype=object)
-    except (TypeError, ValueError) as exc:
-        raise SystemExit(f"CSV contains an invalid label, score or group: {exc}") from exc
+    parsed_rows = []
+    for row_number, row in enumerate(rows, start=2):
+        try:
+            label = int(float(row[args.label_column]))
+            score = float(row[args.score_column])
+            group = str(row[args.group_column]).strip()
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(f"Row {row_number}: invalid label, score or source group: {exc}") from exc
+        if label not in {0, 1}:
+            raise SystemExit(f"Row {row_number}: label must be 0 (real) or 1 (fake).")
+        if not np.isfinite(score) or not 0 <= score <= 1:
+            raise SystemExit(f"Row {row_number}: score must be finite and in [0,1].")
+        if not group:
+            raise SystemExit(f"Row {row_number}: group_id cannot be empty.")
+        parsed_rows.append((group, label, score))
 
-    if len(labels) < 60:
-        raise SystemExit("Need at least 60 independent labelled observations for a calibration candidate.")
+    grouped: dict[str, dict[str, Any]] = {}
+    for group, label, score in parsed_rows:
+        entry = grouped.setdefault(group, {"labels": set(), "scores": []})
+        entry["labels"].add(label)
+        entry["scores"].append(score)
+    conflicts = [group for group, value in grouped.items() if len(value["labels"]) != 1]
+    if conflicts:
+        raise SystemExit(
+            "Each independent source group must have one ground-truth label. "
+            f"Conflicting labels found for {conflicts[:5]}."
+        )
+
+    group_ids = sorted(grouped)
+    if len(group_ids) < 60:
+        raise SystemExit(
+            "Need at least 60 independent source groups for a calibration candidate. "
+            "Rows/frames/windows from one source count as one group."
+        )
+    labels = np.asarray([next(iter(grouped[group]["labels"])) for group in group_ids], dtype=np.int64)
+    scores = np.asarray([float(np.median(grouped[group]["scores"])) for group in group_ids], dtype=np.float64)
+    groups = np.asarray(group_ids, dtype=object)
     if set(np.unique(labels)) != {0, 1}:
-        raise SystemExit("Labels must contain both classes encoded as 0 (real) and 1 (fake).")
-    if np.any(~np.isfinite(scores)) or np.any((scores < 0) | (scores > 1)):
-        raise SystemExit("All scores must be finite and lie in [0,1].")
-    if any(not group for group in groups):
-        raise SystemExit("Every row needs a non-empty group_id such as source video, speaker or original image.")
-    unique_groups = set(groups)
-    if len(unique_groups) < 10:
-        raise SystemExit("Need at least 10 independent groups; rows from one source do not count as independent samples.")
+        raise SystemExit("Source groups must contain both classes encoded as 0 (real) and 1 (fake).")
 
     train_index, test_index = _candidate_group_split(labels, groups, args.test_size)
-    if len(test_index) < 20 or len(set(groups[test_index])) < 5:
-        raise SystemExit("Held-out set must contain at least 20 rows from at least 5 independent groups.")
-
+    if len(test_index) < 20:
+        raise SystemExit("Held-out set must contain at least 20 independent source groups.")
     train_labels, train_scores = labels[train_index], scores[train_index]
     held_out_labels, held_out_scores = labels[test_index], scores[test_index]
     calibrator = IsotonicRegression(out_of_bounds="clip").fit(train_scores, train_labels)
@@ -151,10 +172,11 @@ def main():
         "dataset": {
             "filename": args.csv_path.name,
             "sha256": dataset_hash,
+            "n_rows_total": int(len(parsed_rows)),
             "n_total": int(len(labels)),
             "n_fit": int(len(train_index)),
             "n_held_out": int(len(test_index)),
-            "n_groups_total": int(len(unique_groups)),
+            "n_groups_total": int(len(group_ids)),
             "n_groups_fit": int(len(train_groups)),
             "n_groups_held_out": int(len(held_groups)),
             "fit_group_ids": sorted(str(value) for value in train_groups),
