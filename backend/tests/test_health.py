@@ -5,6 +5,19 @@ from app.services.correlation import correlate_modalities
 client = TestClient(app)
 
 
+def test_cors_allows_vite_fallback_ports():
+    response = client.options(
+        "/api/activity",
+        headers={
+            "Origin": "http://localhost:5174",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5174"
+
+
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
@@ -16,7 +29,8 @@ def test_capabilities_advertise_model_pipelines():
     assert response.status_code == 200
     models = response.json()["models"]
     assert "deitfake" in models["image"]
-    assert "wav2vec" in models["audio"].lower()
+    assert "wav2vec2" in models["audio"].lower()
+    assert "hemgg/deepfake-audio-detection" in response.json()["model_checkpoints"]["audio"].lower()
 
 
 def test_cross_modal_requires_user_pair_confirmation():
