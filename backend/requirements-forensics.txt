@@ -1,0 +1,7 @@
+# Optional integrations. Install only when the matching model / system tool is configured.
+pytesseract>=0.3.13
+c2pa-python>=0.6
+insightface>=0.7.3
+onnxruntime>=1.18
+scikit-learn>=1.5
+syncnet-python>=0.2.3
