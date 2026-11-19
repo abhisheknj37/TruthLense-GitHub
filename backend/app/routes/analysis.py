@@ -33,6 +33,7 @@ from app.services.provenance import inspect_provenance
 from app.services.ocr import extract_image_text, extract_video_frame_text
 from app.services.transcription import transcribe_audio
 from app.services.audio_review import audio_review_timeline
+from app.services.image_comparison import compare_images
 from app.services.text_analysis import analyze_text_context
 from app.services.claim_verification import verify_claims
 from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
@@ -98,7 +99,7 @@ async def analyze_case(
                 temporary_path = Path(temp.name)
             size = await save_upload(upload, temporary_path)
             result = inspect_media(temporary_path)
-            if result["media_type"] in {"video", "audio"}:
+            if result["media_type"] in {"video", "audio", "image"}:
                 retained_paths.setdefault(result["media_type"], []).append(temporary_path)
 
             digest = hashlib.sha256()
@@ -226,6 +227,8 @@ async def analyze_case(
     assets_for_correlation = [asset.model_dump() for asset in assets]
     cross_modal = correlate_modalities(assets_for_correlation, pair_media)
     try:
+        if len(retained_paths.get("image", [])) >= 2:
+            cross_modal.extend(await run_in_threadpool(compare_images, retained_paths["image"]))
         if pair_media and retained_paths.get("video") and retained_paths.get("audio"):
             cross_modal.append({
                 "type": "experimental_audio_video_activity_alignment",
