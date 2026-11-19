@@ -315,7 +315,7 @@ function IntegrityPanel({ events, loading, error }) {
   const matched = assets.filter((asset) => asset.integrity_verification?.status === "match").length;
   return <section className="content-panel integrity-panel">
     <div className="insight-panel-title"><div><span className="section-kicker">SERVER-RECORDED INTEGRITY</span><h2>SHA-256 fingerprints</h2></div><span className="insight-icon"><Fingerprint size={19} /></span></div>
-    <div className="integrity-summary"><b>{matched} / {assets.length}</b><span>received files independently matched against the pre-upload browser digest</span></div>
+    <div className="integrity-summary"><b>{matched} / {assets.length}</b><span>of the latest six evidence files independently matched the browser's pre-upload digest</span></div>
     {assets.length ? <div className="integrity-list">{assets.map((asset) => {
       const state = asset.integrity_verification?.status || "not_compared";
       const label = state === "match" ? "Verified match" : state === "mismatch" ? "Mismatch" : state === "invalid_client_digest" ? "Invalid digest" : "Not compared";
@@ -475,6 +475,7 @@ export default function App() {
   const [workspaceName, setWorkspaceName] = useState(() => localStorage.getItem("truthlens.workspace-name") || "Forensic workspace");
   const [savedReports, setSavedReports] = useState([]);
   const [activityEvents, setActivityEvents] = useState([]);
+  const [activitySummary, setActivitySummary] = useState({ case_count: 0, evidence_count: 0, verified_count: 0, manipulation_signals: 0 });
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState("");
 
@@ -526,6 +527,7 @@ export default function App() {
   const refreshActivity = useCallback(async () => {
     if (!user) {
       setActivityEvents([]);
+      setActivitySummary({ case_count: 0, evidence_count: 0, verified_count: 0, manipulation_signals: 0 });
       setActivityLoading(false);
       return;
     }
@@ -537,6 +539,7 @@ export default function App() {
         headers: { Authorization: "Bearer " + token }
       });
       setActivityEvents(response.data.events || []);
+      setActivitySummary(response.data.summary || { case_count: 0, evidence_count: 0, verified_count: 0, manipulation_signals: 0 });
       setActivityError("");
       setApiStatus("online");
     } catch (err) {
@@ -572,8 +575,8 @@ export default function App() {
     item.report_id.toLowerCase().includes(search.toLowerCase()) ||
     item.assets.some((asset) => asset.filename.toLowerCase().includes(search.toLowerCase()))
   );
-  const reviewedAssets = activityEvents.reduce((sum, item) => sum + item.evidence_count, 0);
-  const verifiedAssetsCount = activityEvents.reduce((sum, item) => sum + item.verified_count, 0);
+  const reviewedAssets = activitySummary.evidence_count;
+  const verifiedAssetsCount = activitySummary.verified_count;
   const integrityPercent = reviewedAssets ? Math.round((verifiedAssetsCount / reviewedAssets) * 100) : 0;
 
   function addFiles(selected) {
@@ -754,7 +757,7 @@ export default function App() {
       <nav className="nav-list">{nav.map(([id, label, icon]) =>
         <button key={id} className={"nav-item " + (page === id ? "active" : "")} onClick={() => { setPage(id); setNotice(""); }}>
           {icon}<span>{label}</span>
-          {id === "history" && activityEvents.length > 0 && <em>{activityEvents.length}</em>}
+          {id === "history" && activitySummary.case_count > 0 && <em>{activitySummary.case_count}</em>}
         </button>)}</nav>
       <div className="sidebar-bottom">
         <div className="profile-avatar">{(user.displayName || user.email || "FA").slice(0, 2).toUpperCase()}</div><div className="profile-copy"><b>{user.displayName || "Forensic analyst"}</b><small>{user.email || "Signed in"}</small></div>
@@ -810,9 +813,9 @@ export default function App() {
         </label>
 
         <div className="stats-grid dashboard-stats">
-          <div className="stat-card"><span><FolderOpen size={17} /> TOTAL CASES</span><b>{activityEvents.length}</b><small>Server records · live refresh</small></div>
-          <div className="stat-card"><span><ShieldAlert size={17} /> MANIPULATION SIGNALS</span><b>{activityEvents.reduce((sum, event) => sum + (event.evidence || []).filter((asset) => asset.prediction === "fake_signal").length, 0)}</b><small>Signals requiring analyst review</small></div>
-          <div className="stat-card"><span><FileBarChart2 size={17} /> REPORTS GENERATED</span><b>{activityEvents.length}</b><small>Reports persisted by backend</small></div>
+          <div className="stat-card"><span><FolderOpen size={17} /> TOTAL CASES</span><b>{activitySummary.case_count}</b><small>Server records · live refresh</small></div>
+          <div className="stat-card"><span><ShieldAlert size={17} /> MANIPULATION SIGNALS</span><b>{activitySummary.manipulation_signals}</b><small>Signals requiring analyst review</small></div>
+          <div className="stat-card"><span><FileBarChart2 size={17} /> REPORTS GENERATED</span><b>{activitySummary.case_count}</b><small>Reports persisted by backend</small></div>
           <div className="stat-card"><span><FileImage size={17} /> MEDIA ANALYZED</span><b>{reviewedAssets}</b><small>Evidence items across cases</small></div>
         </div>
 
