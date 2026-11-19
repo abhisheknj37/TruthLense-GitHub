@@ -116,46 +116,117 @@ function getInvestigatorReviewProgress(report) {
 
 function exportPdf(report) {
   const reviewProgress = getInvestigatorReviewProgress(report);
-  const rows = report.assets.map((asset) => {
+  const esc = escapeHtml;
+  const humanDate = (value) => value ? esc(formatDate(value)) : "Not recorded";
+  const titleCase = (value) => String(value || "Not available").replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  const safeValue = (key, value) => {
+    if (value === null || value === undefined || value === "") return "Not available";
+    if (typeof value === "number" && (!Number.isFinite(value) || value < 0)) return "Unavailable (invalid source metadata)";
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    return String(value);
+  };
+  const tableRows = (items) => Object.entries(items || {}).filter(([, value]) =>
+    ["string", "number", "boolean"].includes(typeof value) || value === null
+  ).map(([key, value]) => "<tr><th>" + esc(titleCase(key)) + "</th><td>" + esc(safeValue(key, value)) + "</td></tr>").join("");
+  const objectTable = (object) => {
+    if (!object || typeof object !== "object" || Array.isArray(object)) return "<p class='empty'>No structured details available.</p>";
+    const rows = Object.entries(object).map(([key, value]) => {
+      const display = value && typeof value === "object"
+        ? "<pre>" + esc(JSON.stringify(value, null, 2)) + "</pre>"
+        : esc(safeValue(key, value));
+      return "<tr><th>" + esc(titleCase(key)) + "</th><td>" + display + "</td></tr>";
+    }).join("");
+    return "<table class='data-table'>" + rows + "</table>";
+  };
+  const observationList = (asset) => (asset.observations || []).length
+    ? "<div class='finding-list'>" + asset.observations.map((item) =>
+      "<div class='finding'><div class='finding-head'><b>" + esc(item.title || item.code || "Observation") +
+      "</b><span class='tag " + esc(item.severity || "info") + "'>" + esc(titleCase(item.severity || "info")) +
+      "</span></div><p>" + esc(item.detail || item.note || item.interpretation || "No detail supplied.") + "</p></div>"
+    ).join("") + "</div>"
+    : "<p class='empty'>No structured observations were returned for this evidence item.</p>";
+  const assets = (report.assets || []).map((asset, index) => {
     const model = asset.model_assessment || {};
-    const meta = Object.entries(asset.metadata || {}).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
-      .map(([key, value]) => "<tr><th>" + escapeHtml(key.replaceAll("_", " ")) + "</th><td>" + escapeHtml(value) + "</td></tr>").join("");
-    return "<section class='asset'><h2>" + escapeHtml(asset.filename) + "</h2><p>" +
-      escapeHtml(String(asset.media_type).toUpperCase()) + " · " + escapeHtml(formatBytes(asset.size_bytes)) +
-      "</p><p><b>Model signal:</b> " + escapeHtml(predictionLabel(model.prediction)) +
-      "</p><p><b>Model:</b> " + escapeHtml(model.model_name || "Not available") +
-      "</p><p><b>SHA-256:</b><br><code>" + escapeHtml(asset.sha256) +
-      "</code></p><p><b>Evidence reference:</b> <code>" + escapeHtml(asset.asset_id || "Not assigned") + "</code></p>" +
-      "<h3>Observed findings</h3>" + ((asset.observations || []).length ? "<ul>" + asset.observations.map((item) => "<li><b>" + escapeHtml(item.title || item.code || "Observation") + ":</b> " + escapeHtml(item.detail || item.note || item.interpretation || "No detail supplied") + " <span class=muted>(" + escapeHtml(item.severity || "unclassified") + ")</span></li>").join("") + "</ul>" : "<p>No structured observations were returned for this evidence item.</p>") +
-      "<table>" + meta + "</table>" +
-      (asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h3>Image forensic parameters</h3><pre>" + escapeHtml(JSON.stringify(asset.forensic_parameters, null, 2)) + "</pre>" : "") +
-      (asset.provenance ? "<h3>Evidence provenance</h3><pre>" + escapeHtml(JSON.stringify(asset.provenance, null, 2)) + "</pre>" : "") +
-      (asset.text_extraction ? "<h3>OCR / transcription</h3><pre>" + escapeHtml(JSON.stringify(asset.text_extraction, null, 2)) + "</pre>" : "") +
-      (asset.model_assessment?.audio_review_timeline ? "<h3>Audio waveform and acoustic review</h3><pre>" + escapeHtml(JSON.stringify(asset.model_assessment.audio_review_timeline, null, 2)) + "</pre>" : "") +
-      (asset.video_analysis?.temporal_forensics ? "<h3>Temporal video review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.temporal_forensics, null, 2)) + "</pre>" : "") +
-      (asset.video_analysis?.face_identity_consistency ? "<h3>Face consistency review</h3><pre>" + escapeHtml(JSON.stringify(asset.video_analysis.face_identity_consistency, null, 2)) + "</pre>" : "") +
-      "</section>";
+    const metadata = tableRows(asset.metadata || {});
+    const provenance = asset.provenance || {};
+    const extras = [
+      asset.forensic_parameters && Object.keys(asset.forensic_parameters).length ? "<h4>Image forensic measurements</h4>" + objectTable(asset.forensic_parameters) : "",
+      Object.keys(provenance).length ? "<h4>Evidence provenance</h4>" + objectTable(provenance) : "",
+      asset.text_extraction ? "<h4>OCR / transcription status</h4>" + objectTable(asset.text_extraction) : "",
+      asset.model_assessment?.audio_review_timeline ? "<h4>Audio review timeline</h4>" + objectTable(asset.model_assessment.audio_review_timeline) : "",
+      asset.video_analysis?.temporal_forensics ? "<h4>Temporal video review</h4>" + objectTable(asset.video_analysis.temporal_forensics) : "",
+      asset.video_analysis?.face_identity_consistency ? "<h4>Face consistency review</h4>" + objectTable(asset.video_analysis.face_identity_consistency) : ""
+    ].join("");
+    return "<section class='asset page-section'><div class='asset-title'><span class='eyebrow'>EVIDENCE ITEM " + String(index + 1).padStart(2, "0") +
+      "</span><h3>" + esc(asset.filename || "Unnamed evidence") + "</h3><span class='tag neutral'>" +
+      esc(String(asset.media_type || "unknown").toUpperCase()) + " · " + esc(formatBytes(asset.size_bytes)) + "</span></div>" +
+      "<div class='metric-grid'><div class='metric'><span>MODEL SIGNAL</span><b>" + esc(predictionLabel(model.prediction)) +
+      "</b></div><div class='metric'><span>MODEL</span><b>" + esc(model.model_name || "Not available") +
+      "</b></div><div class='metric'><span>ASSESSMENT</span><b>" + esc(titleCase(model.status || "inconclusive")) + "</b></div></div>" +
+      "<div class='hash-block'><span>SHA-256 · RECEIVED FILE BYTES</span><code>" + esc(asset.sha256 || "Not recorded") +
+      "</code><span class='eyebrow'>EVIDENCE REFERENCE</span><code>" + esc(asset.asset_id || "Not assigned") + "</code></div>" +
+      "<h4>Observed findings</h4>" + observationList(asset) +
+      (metadata ? "<h4>Technical metadata</h4><table class='data-table'>" + metadata + "</table>" : "") + extras + "</section>";
   }).join("");
-  const limitations = (report.limitations || []).map((item) => "<li>" + escapeHtml(item) + "</li>").join("");
-  const html = "<!doctype html><html><head><title>TruthLens case report</title><style>" +
-    "body{font:14px Arial;color:#172033;margin:36px}h1{margin-bottom:4px}h2{font-size:17px}p{line-height:1.5}" +
-    ".muted{color:#62718a}.asset{border:1px solid #cbd5e1;border-radius:8px;padding:16px;margin:18px 0;break-inside:avoid}" +
-    "code{font-size:10px;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px;border-top:1px solid #e2e8f0}" +
-    "th{text-transform:capitalize;width:35%}li{margin:7px 0}@media print{button{display:none}}</style></head><body>" +
-    "<h1>TruthLens · Forensic case report</h1><p class='muted'>Case " + escapeHtml(report.report_id) +
-    " · " + escapeHtml(formatDate(report.created_at)) + "</p><h2>Case summary</h2><p>" +
-    escapeHtml(report.summary) + "</p><p><b>Automated assessment:</b> " + escapeHtml(getAssessmentStatusLabel(report.overall_status)) +
-    " · <b>Human oversight:</b> " + (report.human_review_required ? "Required" : "Not specified") +
-    " · <b>Investigator review:</b> " + reviewProgress.reviewed + "/" + reviewProgress.total + " findings reviewed (" + (reviewProgress.complete ? "Complete" : "Pending") + ")" +
-    "</p><h2>Evidence inventory and findings</h2>" + rows +
-    "<h2>Cross-modal review</h2>" + (report.cross_modal_review || []).map((item) =>
-      "<p><b>" + escapeHtml(item.type || "Review") + " · " + escapeHtml(item.status) +
-      ":</b> " + escapeHtml(item.detail || item.note || item.interpretation || JSON.stringify(item)) + "</p>").join("") +
-    (report.text_analysis ? "<h2>Text and context review</h2><pre>" + escapeHtml(JSON.stringify(report.text_analysis, null, 2)) + "</pre>" : "") +
-    (report.investigator_reviews?.length ? "<h2>Investigator decisions</h2><table>" + report.investigator_reviews.map((item) => "<tr><th>" + escapeHtml(item.finding_id) + "</th><td>" + escapeHtml(item.status) + "</td><td>" + escapeHtml(item.comment || "No analyst note") + "</td><td>" + escapeHtml(item.updated_at || "") + "</td></tr>").join("") + "</table>" : "<h2>Investigator decisions</h2><p>No saved investigator decisions were available at export time.</p>") +
-    (report.evidence_events?.length ? "<h2>Hash-linked evidence events</h2><pre>" + escapeHtml(JSON.stringify(report.evidence_events, null, 2)) + "</pre>" : "") +
-    "<h2>Limitations and review notes</h2><ul>" + limitations + "</ul>" +
-    "<p class='muted'>Model scores are not calibrated probabilities or proof of authenticity. Human review and original-source context are required.</p><div class='footer'>TRUTHLENS · Evidence references are tied to the case record and SHA-256 values shown above. Preserve original source media separately.</div>" +
+  const cross = (report.cross_modal_review || []).length
+    ? "<div class='review-list'>" + report.cross_modal_review.map((item) =>
+      "<div class='review-row'><div><b>" + esc(titleCase(item.type || "Review")) + "</b><span class='tag neutral'>" +
+      esc(titleCase(item.status || "Not specified")) + "</span></div><p>" +
+      esc(item.detail || item.note || item.interpretation || "No explanatory detail supplied.") + "</p></div>"
+    ).join("") + "</div>"
+    : "<p class='empty'>No cross-modal comparisons were available for this case.</p>";
+  const reviews = (report.investigator_reviews || []).length
+    ? "<table class='data-table'><thead><tr><th>Finding reference</th><th>Decision</th><th>Analyst rationale</th><th>Last updated</th></tr></thead><tbody>" +
+      report.investigator_reviews.map((item) => "<tr><td><code>" + esc(item.finding_id) + "</code></td><td><span class='tag " +
+      esc(item.status) + "'>" + esc(titleCase(item.status)) + "</span></td><td>" + esc(item.comment || "No analyst note recorded") +
+      "</td><td>" + humanDate(item.updated_at) + "</td></tr>").join("") + "</tbody></table>"
+    : "<p class='empty'>No saved investigator decisions were available at export time.</p>";
+  const events = (report.evidence_events || []).length
+    ? "<table class='data-table'><thead><tr><th>Event</th><th>Details</th><th>Timestamp</th><th>Event hash</th></tr></thead><tbody>" +
+      report.evidence_events.map((item) => "<tr><td>" + esc(titleCase(item.event)) + "</td><td>" +
+      esc(item.detail || item.filename || item.asset_id || "—") + "</td><td>" + humanDate(item.timestamp) +
+      "</td><td><code>" + esc(item.event_hash || "Not recorded") + "</code></td></tr>").join("") +
+      "</tbody></table>"
+    : "<p class='empty'>No evidence events were recorded.</p>";
+  const limitations = (report.limitations || []).map((item) => "<li>" + esc(item) + "</li>").join("");
+  const summaryStatus = getAssessmentStatusLabel(report.overall_status);
+  const html = "<!doctype html><html><head><meta charset='utf-8'><title>TruthLens Forensic Case Report</title><style>" +
+    "@page{size:A4;margin:17mm 15mm}*{box-sizing:border-box}body{font:10pt/1.55 Arial,sans-serif;color:#17243a;margin:0;background:#fff}" +
+    ".cover{border-bottom:4px solid #173b66;padding:0 0 18px;margin-bottom:22px}.brand{font-size:10pt;font-weight:700;letter-spacing:2px;color:#245b91}" +
+    "h1{font-size:25pt;line-height:1.15;margin:10px 0 6px;color:#10243d}h2{font-size:15pt;color:#153c65;margin:25px 0 10px;padding-bottom:6px;border-bottom:1px solid #cbd6e2}" +
+    "h3{font-size:12pt;margin:5px 0 8px;color:#142e4b;overflow-wrap:anywhere}h4{font-size:10pt;margin:18px 0 7px;color:#24527c}" +
+    "p{margin:5px 0 10px}.muted,.eyebrow{color:#61748b}.eyebrow{font-size:8pt;font-weight:700;letter-spacing:1.2px}" +
+    ".case-meta{color:#61748b;font-size:9pt}.summary{background:#f2f6fa;border-left:4px solid #2d6596;padding:13px 15px;border-radius:4px}" +
+    ".metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.metric{background:#f4f7fa;border:1px solid #dbe3ec;border-radius:5px;padding:9px;min-width:0}" +
+    ".metric span,.hash-block span{display:block;font-size:7.5pt;letter-spacing:.8px;color:#61748b;font-weight:700}.metric b{display:block;margin-top:4px;font-size:9pt;overflow-wrap:anywhere}" +
+    ".status-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.status{border:1px solid #dbe3ec;padding:10px;border-radius:5px}.status b{display:block;margin-top:4px}" +
+    ".asset{border:1px solid #cbd6e2;border-radius:7px;padding:14px;margin:12px 0 18px;break-inside:auto}.asset-title{border-bottom:1px solid #e1e7ee;padding-bottom:10px}" +
+    ".tag{display:inline-block;border-radius:12px;padding:2px 8px;font-size:8pt;font-weight:700;background:#e9eff5;color:#294968}.tag.warning{background:#fff2d9;color:#85520a}.tag.info{background:#e8f1fb;color:#24527c}.tag.confirmed{background:#e4f4e9;color:#21633a}.tag.rejected{background:#fbe8e8;color:#8a2c2c}.tag.inconclusive{background:#fff2d9;color:#85520a}" +
+    ".finding{border:1px solid #e0e6ed;border-radius:5px;padding:9px 11px;margin:7px 0;break-inside:avoid}.finding-head{display:flex;justify-content:space-between;gap:10px}.finding p,.review-row p{margin:5px 0 0}" +
+    ".hash-block{background:#f6f8fa;padding:10px;border-radius:5px;margin:10px 0}.hash-block code{display:block;margin:4px 0 9px}" +
+    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}" +
+    "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
+    ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
+    ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
+    ".page-section{break-inside:auto}thead{display:table-header-group}tr{break-inside:avoid}@media print{a{color:inherit;text-decoration:none}.asset{break-inside:auto}}" +
+    "</style></head><body>" +
+    "<header class='cover'><div class='brand'>TRUTHLENS / DIGITAL FORENSICS</div><h1>Forensic Case Report</h1>" +
+    "<div class='case-meta'>Case reference: " + esc(report.report_id) + "<br>Generated: " + humanDate(new Date().toISOString()) +
+    " · Investigation date: " + humanDate(report.created_at) + "</div></header>" +
+    "<h2>01 · Executive case summary</h2><div class='summary'><b>Case assessment</b><p>" + esc(report.summary || "No case summary supplied.") +
+    "</p></div><div class='status-grid'><div class='status'><span class='eyebrow'>AUTOMATED ASSESSMENT</span><b>" + esc(summaryStatus) +
+    "</b></div><div class='status'><span class='eyebrow'>HUMAN OVERSIGHT</span><b>" +
+    (report.human_review_required ? "Required" : "Not specified") + "</b></div><div class='status'><span class='eyebrow'>INVESTIGATOR REVIEW</span><b>" +
+    reviewProgress.reviewed + " / " + reviewProgress.total + " reviewed · " + (reviewProgress.complete ? "Complete" : "Pending") + "</b></div></div>" +
+    "<h2>02 · Evidence inventory and technical findings</h2><p class='section-intro'>Each evidence item is identified by its case reference and received-file SHA-256 digest.</p>" +
+    (assets || "<p class='empty'>No evidence items were recorded.</p>") +
+    "<h2>03 · Cross-modal and contextual review</h2>" + cross +
+    (report.text_analysis ? "<h2>04 · Text and claim-context review</h2>" + objectTable(report.text_analysis) : "") +
+    "<h2>05 · Investigator decisions</h2><p class='section-intro'>Human decisions are recorded separately from automated model outputs.</p>" + reviews +
+    "<h2>06 · Evidence event history</h2>" + events +
+    "<h2>07 · Limitations, caveats and required follow-up</h2><ul>" + (limitations || "<li>No limitations were supplied by the analysis service.</li>") + "</ul>" +
+    "<div class='summary'><b>Interpretation notice</b><p>Model scores are not calibrated probabilities or proof of authenticity. A matching SHA-256 digest establishes byte-level consistency for the received file, not creator identity or content truth. Findings require qualified human review and original-source context.</p></div>" +
+    "<div class='footer'>TRUTHLENS · Confidential investigative working document · Preserve original source media and maintain chain-of-custody records separately.</div>" +
     "<script>window.onload=function(){window.print()}<\/script></body></html>";
   const win = window.open("", "_blank");
   if (!win) return false;
@@ -164,7 +235,6 @@ function exportPdf(report) {
   win.document.close();
   return true;
 }
-
 function BrandGlyph({ size = 30 }) {
   return <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
     <circle cx="20" cy="20" r="13.2" stroke="currentColor" strokeWidth="2.2"/>
