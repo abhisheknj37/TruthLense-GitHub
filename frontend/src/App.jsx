@@ -150,6 +150,26 @@ function ScoreBar({ label, value }) {
   </div>;
 }
 
+function ForensicParameters({ asset }) {
+  const params = asset.forensic_parameters || {};
+  if (asset.media_type !== "image" || !Object.keys(params).length) return null;
+  const rows = [
+    ["Lighting variation", params.lighting?.grid_mean_intensity_std, "Grid brightness variation"],
+    ["Texture detail", params.texture?.laplacian_variance, "Laplacian variance"],
+    ["Noise estimate", params.noise?.robust_high_frequency_sigma, "High-frequency residual"],
+    ["Compression heuristic", params.compression?.eight_pixel_boundary_gradient_ratio, "8-pixel boundary ratio"]
+  ];
+  return <section className="forensic-parameters">
+    <div className="section-kicker">IMAGE FORENSIC PARAMETERS</div>
+    <div className="forensic-parameter-grid">
+      {rows.map(([label, value, hint]) => <div className="forensic-parameter" key={label}>
+        <small>{label}</small><b>{typeof value === "number" ? value.toFixed(3) : "N/A"}</b><span>{hint}</span>
+      </div>)}
+    </div>
+    <p className="model-note">{params.interpretation || "Descriptive measurements, not standalone manipulation detectors."}</p>
+  </section>;
+}
+
 function Pipeline({ loading, uploadProgress, report }) {
   const steps = [
     ["Media inspection", "File structure, metadata and SHA-256"],
@@ -208,6 +228,17 @@ function ModelAssessment({ asset }) {
         <p className="cam-caption">Patch attribution highlights regions that influenced this model. It is not a manipulation mask or proof.</p>
       </div>)}
     </div>}
+    {asset.media_type === "video" && video.temporal_forensics && <div className="provenance-note">
+      <b>TEMPORAL VIDEO REVIEW</b><span>{video.temporal_forensics.status || "not available"}</span>
+      <small>{video.temporal_forensics.interpretation || video.temporal_forensics.reason}</small>
+      <p>Scene changes: {(video.temporal_forensics.scene_change_timestamps_seconds || []).join(", ") || "None flagged"} seconds</p>
+      <p>Motion discontinuities: {(video.temporal_forensics.motion_discontinuity_timestamps_seconds || []).join(", ") || "None flagged"} seconds</p>
+      {video.temporal_forensics.trained_model_assessment?.note && <small>{video.temporal_forensics.trained_model_assessment.note}</small>}
+    </div>}
+    {asset.media_type === "video" && video.face_identity_consistency && <div className="provenance-note">
+      <b>FACE CONSISTENCY REVIEW</b><span>{video.face_identity_consistency.status}</span><small>{video.face_identity_consistency.note}</small>
+      {video.face_identity_consistency.identity_change_review_points?.map((point, index) => <p key={index}>{point.timestamp_seconds}s · similarity {point.cosine_similarity_to_previous_sample}</p>)}
+    </div>}
     {asset.media_type === "video" && frames.length > 0 && <div className="frame-results">
       <b>Sampled video timeline</b>
       <div className="frame-timeline">
@@ -241,11 +272,48 @@ function EvidenceCard({ asset }) {
     </div>
     <div className="hash-line"><small><Fingerprint size={12} /> SHA-256 EVIDENCE FINGERPRINT</small><code>{asset.sha256}</code>
       <span className={"hash-verification " + (asset.integrity_verification?.status || "recorded")}>{asset.integrity_verification?.status === "match" ? "✓ Browser and API digests match" : asset.integrity_verification?.status === "mismatch" ? "⚠ Digest mismatch — review required" : "Fingerprint recorded · not rechecked"}</span></div>
+    <ForensicParameters asset={asset} />
+    {asset.provenance && <div className="provenance-note"><b>PROVENANCE</b>
+      <span>SHA-256 recorded · C2PA: {asset.provenance.content_credentials?.status || "not verified"}</span>
+      <small>{asset.provenance.content_credentials?.note || asset.provenance.content_credentials?.detail || "No trusted provenance conclusion is available."}</small>
+    </div>}
+    {asset.text_extraction && <div className="provenance-note">
+      <b>TEXT EXTRACTION · {String(asset.text_extraction.status || "unknown").toUpperCase()}</b>
+      <span>{asset.text_extraction.note || "OCR / transcription status"}</span>
+      {asset.text_extraction.text && <p className="extracted-text">{asset.text_extraction.text}</p>}
+      {(asset.text_extraction.frames || []).map((frame, index) => <p key={index}><b>{frame.timestamp_seconds ?? "—"}s:</b> {frame.text}</p>)}
+    </div>}
     <ModelAssessment asset={asset} />
     {(asset.observations || []).map((item) => <div className="observation" key={item.code}>
       <CheckCircle2 size={16} /><div><b>{item.title}</b><p>{item.detail}</p></div>
     </div>)}
   </article>;
+}
+
+function TextContextReview({ report }) {
+  const result = report.text_analysis || {};
+  if (!result.status || result.status === "not_provided") return null;
+  return <section className="text-review-panel">
+    <div className="section-kicker">TEXT & CONTEXT TRIAGE</div>
+    <h3>Supplied claim / caption review</h3>
+    <div className="metadata-grid">
+      <div><small>WORDS</small><b>{result.word_count ?? "—"}</b></div>
+      <div><small>DATES FOUND</small><b>{(result.dates || []).length}</b></div>
+      <div><small>URLS FOUND</small><b>{(result.urls || []).length}</b></div>
+      <div><small>LANGUAGE CUES</small><b>{(result.language_cues || []).length}</b></div>
+    </div>
+    {(result.language_cues || []).map((cue, index) => <div className="observation" key={cue.type + index}>
+      <AlertTriangle size={16}/><div><b>{cue.type.replaceAll("_", " ")}</b><p>{(cue.matched_terms || []).join(", ")} — {cue.interpretation}</p></div>
+    </div>)}
+    {(result.dates || []).length > 0 && <p><b>Dates extracted:</b> {(result.dates || []).join(", ")}</p>}
+    {(result.urls || []).length > 0 && <p><b>URLs supplied:</b> {(result.urls || []).join(", ")}</p>}
+    {result.claim_verification?.results?.map((item, index) => <div className="observation" key={index}>
+      <div><b>Claim · {item.verdict?.replaceAll("_", " ")}</b><p>{item.claim}</p>
+        <small>{(item.candidate_sources || []).slice(0, 3).map((source) => source.title + (source.year ? " (" + source.year + ")" : "")).join(" · ") || "No candidate scholarly sources returned"}</small>
+      </div>
+    </div>)}
+    <p className="model-note">Rule-based triage and scholarly-source discovery only. Candidate papers are not proof that a claim is true or false; verify original sources and relevant passages.</p>
+  </section>;
 }
 
 function ReportView({ report, onJson, onPdf }) {
@@ -263,6 +331,7 @@ function ReportView({ report, onJson, onPdf }) {
         <button className="button button-primary" onClick={onPdf}><Printer size={15} /> Export PDF</button>
       </div>
     </div>
+    <TextContextReview report={report} />
     <div className="report-stats">
       <div className="report-stat"><span>FILES ANALYSED</span><b>{report.assets.length}</b><small>Evidence items received</small></div>
       <div className="report-stat"><span>MODEL ASSESSMENTS</span><b>{assessed}</b><small>Modality signals available</small></div>
@@ -283,6 +352,16 @@ function ReportView({ report, onJson, onPdf }) {
         <span className="model-pill pending">{String(item.status).replaceAll("_", " ")}</span>
         <p>{item.detail}</p>
       </div>)}
+    </div>}
+    {report.evidence_events?.length > 0 && <div className="cross-review">
+      <div className="cross-header"><div><span className="section-kicker">EVIDENCE TRACE</span><h3>Hash-linked event history</h3></div>
+        <span className="model-pill pending">Local ledger</span>
+      </div>
+      {report.evidence_events.map((event, index) => <div className="cross-item" key={event.event_hash || index}>
+        <b>{String(event.event || "event").replaceAll("_", " ")}</b>
+        <p>{event.detail}</p><small>{event.timestamp} · Event hash: {event.event_hash || "not available"}</small>
+      </div>)}
+      <p className="model-note">The local hash chain can detect changes within this ledger. It is not externally anchored or protected against full database replacement.</p>
     </div>}
     <div className="limitations"><b><Shield size={15} /> Limitations & analyst notes</b>
       {(report.limitations || []).map((item) => <p key={item}>• {item}</p>)}
