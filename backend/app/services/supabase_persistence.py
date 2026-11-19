@@ -93,3 +93,30 @@ def persist_case(report: dict[str, Any], firebase_uid: str, case_title: str) -> 
     except httpx.HTTPError as exc:
         raise SupabasePersistenceError("Could not reach Supabase while syncing the case.") from exc
     return True
+
+
+def delete_case(report_id: str, firebase_uid: str) -> bool:
+    """Delete one owner's cloud case; child asset and ledger rows cascade."""
+    if not is_configured():
+        return False
+    base_url = os.environ["SUPABASE_URL"].rstrip("/")
+    service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Prefer": "return=minimal",
+    }
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            response = client.delete(
+                f"{base_url}/rest/v1/truthlens_cases",
+                params={"id": f"eq.{report_id}", "firebase_uid": f"eq.{firebase_uid}"},
+                headers=headers,
+            )
+            if response.is_error:
+                raise SupabasePersistenceError(
+                    f"Supabase case deletion failed with HTTP {response.status_code}."
+                )
+    except httpx.HTTPError as exc:
+        raise SupabasePersistenceError("Could not reach Supabase while deleting the cloud case.") from exc
+    return True
