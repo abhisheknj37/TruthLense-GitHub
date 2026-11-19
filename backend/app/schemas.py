@@ -23,6 +23,7 @@ class AssetResult(BaseModel):
     model_assessment: dict[str, Any] = Field(default_factory=dict)
     video_analysis: dict[str, Any] = Field(default_factory=dict)
     sampled_frames: list[dict[str, Any]] = Field(default_factory=list)
+    integrity_verification: dict[str, Any] = Field(default_factory=dict)
 
 
 class CaseReport(BaseModel):
@@ -34,3 +35,4 @@ class CaseReport(BaseModel):
     cross_modal_review: list[dict[str, str]] = Field(default_factory=list)
     limitations: list[str]
     human_review_required: bool = True
+    case_title: str | None = None
