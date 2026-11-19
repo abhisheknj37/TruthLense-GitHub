@@ -32,6 +32,7 @@ from app.services.media import MediaError, inspect_media
 from app.services.provenance import inspect_provenance
 from app.services.ocr import extract_image_text, extract_video_frame_text
 from app.services.transcription import transcribe_audio
+from app.services.audio_review import audio_review_timeline
 from app.services.text_analysis import analyze_text_context
 from app.services.claim_verification import verify_claims
 from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
@@ -149,6 +150,7 @@ async def analyze_case(
                 if text_extraction.get("text"):
                     extracted_text.append(text_extraction["text"])
                 model_assessment = await run_in_threadpool(audio_detector.analyze, temporary_path)
+                model_assessment["audio_review_timeline"] = await run_in_threadpool(audio_review_timeline, temporary_path)
 
             observations = [Observation(**item) for item in result["observations"]]
             if integrity_verification["status"] == "mismatch":
