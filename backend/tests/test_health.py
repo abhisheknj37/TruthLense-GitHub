@@ -40,3 +40,21 @@ def test_cross_modal_disagreement_is_inconclusive_review():
 def test_me_requires_firebase_bearer_token():
     response = client.get("/api/me")
     assert response.status_code == 401
+
+
+def test_activity_requires_firebase_bearer_token():
+    response = client.get("/api/activity")
+    assert response.status_code == 401
+
+
+def test_saved_report_requires_firebase_bearer_token():
+    response = client.get("/api/reports/report-123")
+    assert response.status_code == 401
+
+
+def test_saved_heatmap_requires_firebase_bearer_token():
+    response = client.get(
+        "/api/reports/report-123/heatmap",
+        params={"asset_id": "asset-123", "face_index": 0},
+    )
+    assert response.status_code == 401
