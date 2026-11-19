@@ -188,4 +188,23 @@ def verify_c2pa(path: Path) -> dict[str, Any]:
         validation = manifest.get("validation_status", []) or selected.get("validation_status", [])
         return {"status": "manifest_found_validation_review", "standard": "C2PA Content Credentials", "active_manifest": active, "claim_generator": selected.get("claim_generator"), "validation_status": validation, "note": "Review SDK validation results and configured trust anchors. Manifest presence alone does not establish trusted provenance or truthfulness."}
     except Exception as exc:
-        return {"status": "verification_error", "standard": "C2PA Content Credentials", "detail": f"{type(exc).__name__}: {str(exc)[:250]}", "note": "No trusted provenance conclusion can be drawn."}
+        error_name = type(exc).__name__.lower()
+        error_text = str(exc).lower()
+        manifest_absent = (
+            "manifestnotfound" in error_name
+            or "manifest not found" in error_text
+            or "no jumbf data found" in error_text
+        )
+        if manifest_absent:
+            return {
+                "status": "manifest_not_present",
+                "standard": "C2PA Content Credentials",
+                "detail": "No embedded C2PA/JUMBF manifest was found.",
+                "note": "No C2PA Content Credentials were detected. This does not indicate manipulation or establish authenticity; creator and editing history cannot be verified through C2PA for this file.",
+            }
+        return {
+            "status": "verification_error",
+            "standard": "C2PA Content Credentials",
+            "detail": f"{type(exc).__name__}: {str(exc)[:250]}",
+            "note": "The C2PA verification process encountered an error. No trusted provenance conclusion can be drawn.",
+        }
