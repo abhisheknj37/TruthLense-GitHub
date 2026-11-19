@@ -96,7 +96,18 @@ function downloadJson(report) {
   link.click();
   URL.revokeObjectURL(url);
 }
+function getInvestigatorReviewProgress(report) {
+  const findings = (report.assets || []).flatMap((asset) => {
+    const observations = asset.observations?.length ? asset.observations : [{ code: "MODEL_ASSESSMENT" }];
+    return observations.map((item, index) => asset.asset_id + ":" + String(item.code || index));
+  });
+  const saved = new Map((report.investigator_reviews || []).map((item) => [item.finding_id, item]));
+  const reviewed = findings.filter((id) => ["confirmed", "rejected", "inconclusive"].includes(saved.get(id)?.status)).length;
+  return { total: findings.length, reviewed, complete: findings.length > 0 && reviewed === findings.length };
+}
+
 function exportPdf(report) {
+  const reviewProgress = getInvestigatorReviewProgress(report);
   const rows = report.assets.map((asset) => {
     const model = asset.model_assessment || {};
     const meta = Object.entries(asset.metadata || {}).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
@@ -125,8 +136,9 @@ function exportPdf(report) {
     "th{text-transform:capitalize;width:35%}li{margin:7px 0}@media print{button{display:none}}</style></head><body>" +
     "<h1>TruthLens · Forensic case report</h1><p class='muted'>Case " + escapeHtml(report.report_id) +
     " · " + escapeHtml(formatDate(report.created_at)) + "</p><h2>Case summary</h2><p>" +
-    escapeHtml(report.summary) + "</p><p><b>Status:</b> " + escapeHtml(report.overall_status) +
-    " · <b>Human review:</b> " + (report.human_review_required ? "Required" : "Not required") +
+    escapeHtml(report.summary) + "</p><p><b>Automated assessment:</b> " + escapeHtml(report.overall_status) +
+    " · <b>Human oversight:</b> " + (report.human_review_required ? "Required" : "Not specified") +
+    " · <b>Investigator review:</b> " + reviewProgress.reviewed + "/" + reviewProgress.total + " findings reviewed (" + (reviewProgress.complete ? "Complete" : "Pending") + ")" +
     "</p><h2>Evidence inventory and findings</h2>" + rows +
     "<h2>Cross-modal review</h2>" + (report.cross_modal_review || []).map((item) =>
       "<p><b>" + escapeHtml(item.type || "Review") + " · " + escapeHtml(item.status) +
@@ -472,7 +484,7 @@ function ReportView({ report, onJson, onPdf, user, onReviewsChange }) {
     <div className="report-summary">
       <div className="summary-icon"><ShieldAlert size={20} /></div>
       <div><span className="section-kicker">INVESTIGATION SUMMARY</span><p>{report.summary}</p>
-        <small>Case ID: {report.report_id} · {report.human_review_required ? "Human review required" : "Review status not specified"}</small>
+        <small>Case ID: {report.report_id} · Model oversight: {report.human_review_required ? "Human review required" : "Not specified"} · Investigator review: {getInvestigatorReviewProgress(report).reviewed}/{getInvestigatorReviewProgress(report).total} findings ({getInvestigatorReviewProgress(report).complete ? "Complete" : "Pending"})</small>
       </div>
     </div>
     <div className="evidence-heading"><div><span className="section-kicker">EVIDENCE REGISTER</span><h3>Asset-by-asset findings</h3></div><span>{report.assets.length} evidence items</span></div>
