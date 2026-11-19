@@ -45,63 +45,92 @@ def _deskew_image(image: Image.Image) -> tuple[Image.Image, float]:
     return Image.fromarray(rotated), round(angle, 2)
 
 
-def _prepare_image(image: Image.Image) -> tuple[Image.Image, dict[str, Any]]:
+def _prepare_image_variants(image: Image.Image) -> tuple[list[tuple[str, Image.Image]], dict[str, Any]]:
+    """Create conservative OCR variants; original uploaded media is never modified."""
     image = ImageOps.exif_transpose(image).convert("L")
     original_size = image.size
     if max(image.size) < 1800:
         scale = min(3.0, 1800 / max(image.size))
-        image = image.resize((max(1, int(image.width * scale)), max(1, int(image.height * scale))), Image.Resampling.LANCZOS)
+        image = image.resize(
+            (max(1, int(image.width * scale)), max(1, int(image.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
     image, angle = _deskew_image(image)
     array = np.asarray(image)
     denoised = cv2.medianBlur(array, 3) if min(array.shape) >= 3 else array
-    enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(denoised)
-    prepared = Image.fromarray(enhanced)
-    return prepared, {
+    contrast = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(denoised)
+    otsu = cv2.threshold(contrast, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    adaptive = cv2.adaptiveThreshold(
+        contrast, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 31, 11,
+    ) if min(contrast.shape) >= 31 else otsu
+    variants = [
+        ("contrast", Image.fromarray(contrast)),
+        ("otsu", Image.fromarray(otsu)),
+        ("adaptive", Image.fromarray(adaptive)),
+    ]
+    return variants, {
         "original_dimensions": [int(original_size[0]), int(original_size[1])],
-        "processed_dimensions": [int(prepared.width), int(prepared.height)],
+        "processed_dimensions": [int(image.width), int(image.height)],
         "deskew_correction_degrees": angle,
-        "preprocessing": ["EXIF orientation", "grayscale", "upscale", "deskew", "median denoise", "CLAHE contrast"],
+        "preprocessing": [
+            "EXIF orientation", "grayscale", "upscale", "deskew",
+            "median denoise", "CLAHE contrast", "Otsu threshold",
+            "adaptive threshold",
+        ],
+        "ocr_variants_tested": [name for name, _ in variants],
     }
 
 
-def _extract_with_confidence(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
-    """Compare two layout modes and retain the text with the strongest word confidence."""
-    candidates = []
-    for psm in (6, 11):
-        config = f"--oem 3 --psm {psm}"
-        data = pytesseract.image_to_data(
-            image, lang=languages, config=config,
-            output_type=pytesseract.Output.DICT,
-        )
-        words = []
-        confidences = []
-        for token, raw_conf in zip(data.get("text", []), data.get("conf", [])):
-            token = str(token).strip()
-            try:
-                confidence = float(raw_conf)
-            except (TypeError, ValueError):
-                continue
-            if token and confidence >= 0:
-                words.append(token)
-                confidences.append(confidence)
-        text = " ".join(words).strip()
-        confidence = round(float(np.mean(confidences)), 1) if confidences else None
-        candidates.append({
-            "text": text,
-            "mean_word_confidence": confidence,
-            "word_count": len(words),
-            "page_segmentation_mode": psm,
-        })
-    # Prefer confidence, then readable word count; empty candidates sort last.
-    selected = max(
-        candidates,
-        key=lambda item: (
-            item["mean_word_confidence"] if item["mean_word_confidence"] is not None else -1,
-            item["word_count"],
-        ),
-    )
-    return selected
+def _candidate_quality(text: str, confidence: float | None, word_count: int) -> float:
+    """Rank candidates using confidence and text legibility cues, not authenticity."""
+    if confidence is None or not text.strip():
+        return -1.0
+    visible = [char for char in text if not char.isspace()]
+    if not visible:
+        return -1.0
+    alphanumeric_ratio = sum(char.isalnum() for char in visible) / len(visible)
+    # Confidence remains dominant; the small legibility term discourages symbol noise.
+    return confidence + (10.0 * alphanumeric_ratio) + min(word_count, 30) * 0.15
 
+
+def _extract_with_confidence(pytesseract, variants: list[tuple[str, Image.Image]], languages: str) -> dict[str, Any]:
+    """Compare preprocessing variants and layout modes; retain the most legible result."""
+    candidates = []
+    for variant_name, image in variants:
+        for psm in (6, 11, 4):
+            config = f"--oem 3 --psm {psm}"
+            data = pytesseract.image_to_data(
+                image, lang=languages, config=config,
+                output_type=pytesseract.Output.DICT,
+            )
+            words, confidences = [], []
+            for token, raw_conf in zip(data.get("text", []), data.get("conf", [])):
+                token = str(token).strip()
+                try:
+                    confidence = float(raw_conf)
+                except (TypeError, ValueError):
+                    continue
+                if token and confidence >= 0:
+                    words.append(token)
+                    confidences.append(confidence)
+            text = " ".join(words).strip()
+            confidence = round(float(np.mean(confidences)), 1) if confidences else None
+            candidates.append({
+                "text": text,
+                "mean_word_confidence": confidence,
+                "word_count": len(words),
+                "page_segmentation_mode": psm,
+                "preprocessing_variant": variant_name,
+                "selection_score": round(_candidate_quality(text, confidence, len(words)), 2),
+            })
+    selected = max(candidates, key=lambda item: item["selection_score"], default={
+        "text": "", "mean_word_confidence": None, "word_count": 0,
+        "page_segmentation_mode": None, "preprocessing_variant": None,
+        "selection_score": -1.0,
+    })
+    # Do not expose the internal selection score as a confidence or authenticity score.
+    return selected
 
 def _ocr_note(confidence: float | None) -> tuple[str, str]:
     if confidence is None:
@@ -114,8 +143,8 @@ def _ocr_note(confidence: float | None) -> tuple[str, str]:
 
 
 def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
-    prepared, preprocessing = _prepare_image(image)
-    result = _extract_with_confidence(pytesseract, prepared, languages)
+    variants, preprocessing = _prepare_image_variants(image)
+    result = _extract_with_confidence(pytesseract, variants, languages)
     confidence = result["mean_word_confidence"]
     confidence_level, confidence_note = _ocr_note(confidence)
     text = result["text"][:12000]
@@ -129,6 +158,7 @@ def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
         "mean_word_confidence": confidence,
         "confidence_level": confidence_level,
         "page_segmentation_mode": result["page_segmentation_mode"],
+        "preprocessing_variant": result["preprocessing_variant"],
         "preprocessing": preprocessing,
         "note": confidence_note,
     }
