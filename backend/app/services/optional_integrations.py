@@ -133,12 +133,29 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "note": "Evaluation scripts use a labelled CSV supplied by the project team and do not calibrate live model outputs automatically.",
     }
 
-    ledger_value = os.getenv("TRUTHLENS_LEDGER_DB", "").strip()
-    ledger_path = Path(ledger_value).expanduser() if ledger_value else Path(__file__).resolve().parents[2] / "data" / "evidence_ledger.sqlite3"
-    result["evidence_ledger"] = {
-        "status": "local_hash_linked_ledger",
-        "database_name": ledger_path.name,
-        "exists": ledger_path.exists(),
-        "note": "Local hash-chain verification only; not externally anchored or independently timestamped.",
+    if os.getenv("DATABASE_URL", "").strip():
+        result["evidence_ledger"] = {
+            "status": "supabase_postgresql_configured", "database_name": "Supabase PostgreSQL", "exists": True,
+            "note": "Remote hash-linked ledger; chain verification does not provide trusted timestamps or external anchoring.",
+        }
+    else:
+        ledger_value = os.getenv("TRUTHLENS_LEDGER_DB", "").strip()
+        ledger_path = Path(ledger_value).expanduser() if ledger_value else Path(__file__).resolve().parents[2] / "data" / "evidence_ledger.sqlite3"
+        result["evidence_ledger"] = {
+            "status": "local_hash_linked_ledger", "database_name": ledger_path.name, "exists": ledger_path.exists(),
+            "note": "Local hash-chain verification only; not externally anchored or independently timestamped.",
+        }
+    result["supabase_database"] = {
+        "status": "configured" if os.getenv("DATABASE_URL", "").strip() else "not_configured",
+        "provider": "Supabase PostgreSQL",
+        "note": "Reports, assets, activity and evidence events use Supabase PostgreSQL when configured.",
+    }
+    storage_ready = bool(os.getenv("DATABASE_URL", "").strip() and os.getenv("SUPABASE_URL", "").strip()
+                         and (os.getenv("SUPABASE_SECRET_KEY", "").strip()
+                              or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()))
+    result["original_evidence_storage"] = {
+        "status": "configured" if storage_ready else "not_configured",
+        "bucket": os.getenv("SUPABASE_STORAGE_BUCKET", "truthlens-evidence"), "private": True,
+        "note": "Original files are stored in the private Supabase Storage bucket and downloaded only through Firebase-authenticated backend routes.",
     }
     return result

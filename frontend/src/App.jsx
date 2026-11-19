@@ -270,10 +270,13 @@ function ModelAssessment({ asset }) {
   </div>;
 }
 
-function EvidenceCard({ asset }) {
+function EvidenceCard({ asset, reportId, onDownloadOriginal }) {
   return <article className="evidence-card">
     <div className="asset-head"><span>{typeIcon(asset.media_type)} {String(asset.media_type).toUpperCase()} EVIDENCE</span><small>{formatBytes(asset.size_bytes)}</small></div>
     <h3>{asset.filename}</h3>
+    {asset.storage_path && <button className="text-button original-download" onClick={() => onDownloadOriginal(reportId, asset)}>
+      <Download size={14} /> Download original evidence
+    </button>}
     <div className="metadata-grid">
       {Object.entries(asset.metadata || {}).filter(([key, value]) => typeof value !== "object" && value !== null).slice(0, 8)
         .map(([key, value]) => <div key={key}><small>{key.replaceAll("_", " ")}</small><b>{String(value)}</b></div>)}
@@ -324,7 +327,7 @@ function TextContextReview({ report }) {
   </section>;
 }
 
-function ReportView({ report, onJson, onPdf }) {
+function ReportView({ report, onJson, onPdf, onDownloadOriginal }) {
   const assessed = report.assets.filter((asset) => asset.model_assessment?.status === "model_assessed").length;
   const findings = report.assets.reduce((sum, asset) => sum + (asset.observations || []).filter((item) => item.severity === "warning").length, 0);
   const inconclusive = report.assets.length - assessed;
@@ -353,7 +356,7 @@ function ReportView({ report, onJson, onPdf }) {
       </div>
     </div>
     <div className="evidence-heading"><div><span className="section-kicker">EVIDENCE REGISTER</span><h3>Asset-by-asset findings</h3></div><span>{report.assets.length} evidence items</span></div>
-    <div className="asset-grid">{report.assets.map((asset) => <EvidenceCard key={asset.asset_id} asset={asset} />)}</div>
+    <div className="asset-grid">{report.assets.map((asset) => <EvidenceCard key={asset.asset_id} asset={asset} reportId={report.report_id} onDownloadOriginal={onDownloadOriginal} />)}</div>
     {report.cross_modal_review?.length > 0 && <div className="cross-review">
       <div className="cross-header"><div><span className="section-kicker">RELATIONSHIP REVIEW</span><h3>Cross-modal comparison</h3></div><span className="model-pill pending">No fused authenticity score</span></div>
       {report.cross_modal_review.map((item, index) => <div className="cross-item" key={index}>
@@ -363,13 +366,13 @@ function ReportView({ report, onJson, onPdf }) {
     </div>}
     {report.evidence_events?.length > 0 && <div className="cross-review">
       <div className="cross-header"><div><span className="section-kicker">EVIDENCE TRACE</span><h3>Hash-linked event history</h3></div>
-        <span className="model-pill pending">Local ledger</span>
+        <span className="model-pill pending">Hash-linked ledger</span>
       </div>
       {report.evidence_events.map((event, index) => <div className="cross-item" key={event.event_hash || index}>
         <b>{String(event.event || "event").replaceAll("_", " ")}</b>
         <p>{event.detail}</p><small>{event.timestamp} · Event hash: {event.event_hash || "not available"}</small>
       </div>)}
-      <p className="model-note">The local hash chain can detect changes within this ledger. It is not externally anchored or protected against full database replacement.</p>
+      <p className="model-note">The hash chain can detect changes within this ledger. It is not externally anchored or protected against full database replacement.</p>
     </div>}
     <div className="limitations"><b><Shield size={15} /> Limitations & analyst notes</b>
       {(report.limitations || []).map((item) => <p key={item}>• {item}</p>)}
@@ -768,6 +771,26 @@ export default function App() {
       setLoading(false);
     }
   }
+  async function downloadOriginalEvidence(reportId, asset) {
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get(
+        API + "/api/reports/" + encodeURIComponent(reportId) + "/assets/" + encodeURIComponent(asset.asset_id) + "/original",
+        { responseType: "blob", headers: { Authorization: "Bearer " + token }, timeout: 120000 }
+      );
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = asset.filename || "truthlens-evidence";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not download the original evidence file.");
+    }
+  }
+
   async function openReport(report) {
     const reportId = typeof report === "string" ? report : report.report_id;
     setPage("reports");
@@ -1040,7 +1063,7 @@ export default function App() {
             <div className="notice"><AlertTriangle size={16} /><span>Some files may be inconclusive when there is no detectable face, insufficient speech, decoding errors or unsupported model scope.</span></div>
           </aside>
         </div>
-        {activeReport && <ReportView report={activeReport} onJson={() => downloadJson(activeReport)} onPdf={() => {
+        {activeReport && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
       </section>}
@@ -1049,7 +1072,7 @@ export default function App() {
         <div className="page-heading"><div><span className="section-kicker">{page === "history" ? "WORKSPACE / CASE REGISTER" : "WORKSPACE / REPORT LIBRARY"}</span>
           <h1>{page === "history" ? "Case history" : "Reports"}</h1><p>{page === "history" ? "Reopen saved investigations and continue reviewing the evidence." : "Open completed case reports or export an evidence summary."}</p></div>
           <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> New investigation</button></div>
-        {activeReport && page === "reports" && <ReportView report={activeReport} onJson={() => downloadJson(activeReport)} onPdf={() => {
+        {activeReport && page === "reports" && <ReportView report={activeReport} onDownloadOriginal={downloadOriginalEvidence} onJson={() => downloadJson(activeReport)} onPdf={() => {
           if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
         }} />}
         <div className="content-panel record-list-panel">
@@ -1102,9 +1125,9 @@ export default function App() {
             <p className="settings-help">Configure optional modules in backend/.env, restart FastAPI, then refresh this panel. See docs/ADVANCED_FORENSICS.md.</p>
           </div>
           <div className="content-panel settings-card"><span className="section-kicker">DATA & PRIVACY</span><h2>Server-side case storage</h2>
-            <p>Completed reports and real model-attribution PNGs are saved by the TruthLens backend and scoped to your verified Firebase account. The dashboard refreshes its activity feed every 8 seconds. Original uploaded media is processed from temporary files and is not retained as a case attachment.</p>
+            <p>Case reports, evidence metadata, activity, hash-linked events and model-attribution PNGs are stored in Supabase PostgreSQL when configured. Original evidence files are kept in a private Supabase Storage bucket and are available only through the authenticated backend.</p>
             <div className="settings-metric"><b>{activityEvents.length}</b><span>Reports stored by the API for this account</span></div>
-            <p className="settings-help">Backend storage: backend/data/truthlens.sqlite3 and backend/data/heatmaps/. Protect and back up this directory in deployment.</p></div>
+            <p className="settings-help">Local SQLite remains available for development when DATABASE_URL is not set. Supabase credentials must remain in backend/.env or backend-host secrets, never frontend/.env.</p></div>
           <div className="content-panel settings-card"><span className="section-kicker">MODEL TRANSPARENCY</span><h2>Review before concluding</h2>
             <p>Model scores are not calibrated probabilities. Video uses sampled frame classification, audio is scoped to the selected speech model and cross-modal review compares separate model signals only.</p>
             <div className="safety-note"><Shield size={15} /> TruthLens supports investigation; it does not certify authenticity.</div></div>
