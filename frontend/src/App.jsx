@@ -273,8 +273,8 @@ function ModelAssessment({ asset }) {
     </div>}
     {asset.media_type === "audio" && model.audio_review_timeline?.waveform?.length > 0 && <div className="audio-segments">
       <b>Audio waveform · acoustic review</b>
-      <div className="waveform" role="img" aria-label="Audio amplitude waveform">
-        {model.audio_review_timeline.waveform.map((point, index) => <span key={index} title={point.timestamp_seconds + "s"} style={{ height: Math.max(3, Math.min(100, Math.abs(point.amplitude_max - point.amplitude_min) * 90)) + "%" }} />)}
+      <div className="waveform" role="img" aria-label="Audio amplitude waveform" style={{ display: "flex", alignItems: "center", gap: 2, height: 64, padding: "8px 0", overflow: "hidden" }}>
+        {model.audio_review_timeline.waveform.map((point, index) => <span key={index} title={point.timestamp_seconds + "s"} style={{ flex: 1, minWidth: 2, borderRadius: 2, background: "var(--accent, #4f7cff)", height: Math.max(3, Math.min(100, Math.abs(point.amplitude_max - point.amplitude_min) * 90)) + "%" }} />)}
       </div>
       <small>{model.audio_review_timeline.duration_seconds}s · {model.audio_review_timeline.method}</small>
       <p className="model-note">{model.audio_review_timeline.interpretation}</p>
