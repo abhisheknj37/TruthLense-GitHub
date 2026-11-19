@@ -110,3 +110,62 @@ def test_analyst_review_is_persisted_separately_and_scoped_to_owner(tmp_path, mo
     assert saved["analyst_review"]["decision"] == "manipulation_suspected"
     assert saved["analyst_review"]["reviewed_asset_ids"] == ["asset-a"]
     assert get_user_report("reviewer-b", "case-review-001") is None
+
+
+
+def test_analyst_review_http_endpoint_persists_and_enforces_case_owner(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.auth import get_current_user
+    from app.main import app
+
+    monkeypatch.setenv("TRUTHLENS_DATABASE_PATH", str(tmp_path / "review-api.sqlite3"))
+    monkeypatch.setenv("TRUTHLENS_DATA_DIR", str(tmp_path / "review-api-data"))
+    report = {
+        "report_id": "case-review-api",
+        "created_at": "2026-11-20T00:00:00+00:00",
+        "overall_status": "inconclusive",
+        "summary": "Human review endpoint test.",
+        "assets": [{
+            "asset_id": "asset-api",
+            "filename": "sample.wav",
+            "media_type": "audio",
+            "size_bytes": 12,
+            "sha256": "d" * 64,
+            "analysis_status": "inconclusive",
+            "model_assessment": {},
+            "integrity_verification": {"status": "match"},
+        }],
+        "limitations": [],
+    }
+    save_report_and_activity(user_uid="api-owner", report=report, case_title="Review API test")
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "uid": "api-owner", "email": "owner@example.test"
+    }
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/reports/case-review-api/review",
+                json={
+                    "decision": "inconclusive",
+                    "notes": "The available evidence is insufficient.",
+                    "reviewed_asset_ids": ["asset-api"],
+                },
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["analyst_review"]["decision"] == "inconclusive"
+
+            app.dependency_overrides[get_current_user] = lambda: {
+                "uid": "different-user", "email": "other@example.test"
+            }
+            denied = client.post(
+                "/api/reports/case-review-api/review",
+                json={
+                    "decision": "manipulation_suspected",
+                    "notes": "Attempt to update another user's case.",
+                    "reviewed_asset_ids": ["asset-api"],
+                },
+            )
+            assert denied.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
