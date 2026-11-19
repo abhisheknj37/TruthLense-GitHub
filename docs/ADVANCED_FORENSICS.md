@@ -123,7 +123,14 @@ Edit `backend/.env` using paths that exist on the backend machine:
 
 Leave model paths blank until you have a compatible checkpoint. This repository does not bundle temporal-classifier or SyncNet weights. A filename alone does not establish checkpoint compatibility.
 
-The current C2PA adapter uses the installed SDK to read manifest and validation metadata. It does not expose a project-specific trust-store or trust-anchor path setting. Treat the returned validation data as something to review, not as a conclusion that a signer is trusted.
+The current C2PA adapter supports JPEG, PNG, WebP, MP4 and MOV inputs only. WebM is explicitly reported as `unsupported_format`; the presence of a WebM container does not imply that it can carry a supported C2PA manifest. Do not rename a WebM file to MP4 or infer that credentials are absent. The adapter uses the installed SDK to read manifest and validation metadata. It does not expose a project-specific trust-store or trust-anchor path setting. Treat the returned validation data as something to review, not as a conclusion that a signer is trusted.
+
+## Temporal model selection note
+
+Do not point `TRUTHLENS_TEMPORAL_MODEL` at an arbitrary `.pt` or `.pth` file. The current optional adapter expects a TorchScript model accepting RGB float32 input shaped `[1,T,3,224,224]` and currently reads its first scalar output as a raw fake score. A model with a different architecture, frame sampling, normalization, output layout or label order is incompatible even if it is described as a video deepfake detector. Before integrating a checkpoint, verify its source, model card/paper, weights license, inference code, preprocessing, label mapping, supported video domain and independent cross-dataset evaluation. Keep it disabled until an adapter and tests match the exact checkpoint contract.
+
+A current candidate reviewed during development, FakeSTormer, is the official ICCV 2025 implementation and reports cross-dataset video-level AUC results, but its repository specifies an SNT academic license and an older CUDA/PyTorch/MMCV stack. It is not automatically suitable for inclusion in this project or a general Windows CPU deployment. Obtain permission/confirm intended-use terms and build a separately tested adapter before adoption. Its reported benchmark values are the authors' results, not TruthLens results.
+
 
 ### Check readiness from the app
 
