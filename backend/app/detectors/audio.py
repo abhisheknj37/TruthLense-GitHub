@@ -59,12 +59,12 @@ class AudioDeepfakeDetector:
                 }
                 self.fake_index = next(
                     (i for i, label in labels.items()
-                     if any(word in label for word in ("fake", "spoof", "synthetic", "ai")),
+                     if any(word in label for word in ("fake", "spoof", "synthetic", "ai"))),
                     None,
                 )
                 self.real_index = next(
                     (i for i, label in labels.items()
-                     if any(word in label for word in ("real", "human", "bonafide", "bona fide")),
+                     if any(word in label for word in ("real", "human", "bonafide", "bona fide"))),
                     None,
                 )
                 if self.fake_index is None or self.real_index is None:
