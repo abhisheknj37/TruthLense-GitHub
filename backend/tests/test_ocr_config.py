@@ -36,3 +36,26 @@ def test_configure_tesseract_uses_configured_windows_executable(monkeypatch, tmp
 
     assert _configure_tesseract(module) == "eng"
     assert module.pytesseract.tesseract_cmd == str(executable)
+
+def test_ocr_confidence_is_labeled_as_recognition_quality_not_authenticity():
+    from app.services.ocr import _ocr_note
+
+    assert _ocr_note(30)[0] == "low"
+    assert _ocr_note(55)[0] == "moderate"
+    assert _ocr_note(85)[0] == "high"
+    assert _ocr_note(None)[0] == "unavailable"
+    assert "authentic" in _ocr_note(85)[1]
+
+
+def test_prepare_image_returns_preprocessing_metadata():
+    from PIL import Image
+    from app.services.ocr import _prepare_image
+
+    image = Image.new("RGB", (320, 180), "white")
+    prepared, metadata = _prepare_image(image)
+
+    assert prepared.mode == "L"
+    assert prepared.width >= 320
+    assert prepared.height >= 180
+    assert "deskew_correction_degrees" in metadata
+    assert "CLAHE contrast" in metadata["preprocessing"]
