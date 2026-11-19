@@ -36,6 +36,7 @@ from app.services.claim_verification import verify_claims
 from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
+from app.services.optional_integrations import get_optional_integration_status
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -397,6 +398,7 @@ def current_user_profile(current_user: dict = Depends(get_current_user)):
 @router.get("/capabilities")
 def capabilities():
     return {
+        "optional_integration_status": get_optional_integration_status(),
         "advanced_forensics": {
             "temporal_video": "Optical-flow and scene-change review cues; heuristic only",
             "face_consistency": "Optional InsightFace; requires model weights",
