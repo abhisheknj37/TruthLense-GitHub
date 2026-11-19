@@ -136,3 +136,23 @@ def test_rapidocr_missing_dependency_is_reported_without_crashing(monkeypatch):
     result = _rapidocr_extract(Image.new("RGB", (100, 50), "white"))
     assert result["status"] == "engine_not_installed"
     assert result["text"] == ""
+
+def test_ocr_quality_gate_excludes_symbol_heavy_gibberish():
+    from app.services.ocr import _ocr_analysis_gate
+
+    gate = _ocr_analysis_gate("oe LS N a a com WY ee i eft an mies Y Ay NS", 82.0, 12)
+
+    assert gate["analysis_eligible"] is False
+    assert gate["analysis_text"] == ""
+    assert gate["analysis_gate"]["observed_meaningful_token_count"] < 2
+
+
+def test_ocr_quality_gate_keeps_clear_sentence():
+    from app.services.ocr import _ocr_analysis_gate
+
+    text = "The meeting starts at noon tomorrow."
+    gate = _ocr_analysis_gate(text, 82.0, 7)
+
+    assert gate["analysis_eligible"] is True
+    assert gate["analysis_text"] == text
+    assert gate["analysis_gate"]["observed_meaningful_token_count"] >= 2
