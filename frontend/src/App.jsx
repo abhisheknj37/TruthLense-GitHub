@@ -221,7 +221,7 @@ function ModelAssessment({ asset }) {
     </div>
     {details.model_name && <small className="model-name">{details.model_name}</small>}
     {details.scores && <div className="score-list">
-      {Object.entries(details.scores).filter(([key, value]) => typeof value === "number" && (key.includes("fake") || key.includes("real")))
+      {Object.entries(details.scores).filter(([key, value]) => typeof value === "number" && (key.includes("fake") || key.includes("real") || key.includes("ai_generated")))
         .map(([key, value]) => <ScoreBar key={key} label={key} value={value} />)}
     </div>}
     {details.note && <p className="model-note">{details.note}</p>}
