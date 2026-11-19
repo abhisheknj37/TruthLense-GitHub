@@ -109,4 +109,4 @@ def test_analyst_review_is_persisted_separately_and_scoped_to_owner(tmp_path, mo
     saved = get_user_report("reviewer-a", "case-review-001")
     assert saved["analyst_review"]["decision"] == "manipulation_suspected"
     assert saved["analyst_review"]["reviewed_asset_ids"] == ["asset-a"]
-    assert "analyst_review" not in get_user_report("reviewer-b", "case-review-001") if get_user_report("reviewer-b", "case-review-001") else True
+    assert get_user_report("reviewer-b", "case-review-001") is None

@@ -260,3 +260,27 @@ body{background:radial-gradient(ellipse at 80% 5%,#07506433 0,transparent 35%),r
 .integration-status-item small{font-size:10px;line-height:1.5;color:#91a6bb;overflow-wrap:anywhere}
 .integration-status-item .integration-missing{color:#e1bd86}
 @media(max-width:850px){.integration-status-list{grid-template-columns:1fr}.optional-integrations-heading{align-items:flex-start;flex-direction:column}}
+
+
+/* Source-linked text comparison and authenticated analyst review */
+.source-comparison{display:grid;gap:12px;margin:15px 0;padding:14px;border:1px solid #294254;border-radius:10px;background:#0b1c29}
+.source-comparison> b,.reviewed-assets>b{font-size:11px;color:#d9edf0}
+.source-comparison-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.source-comparison-grid article{min-width:0;padding:11px;border:1px solid #294254;border-radius:8px;background:#101f2c}
+.source-comparison-grid article small{display:block;margin-bottom:6px;color:#72d8d0;font:8px 'DM Mono';text-transform:uppercase;letter-spacing:.7px}
+.source-comparison-grid article b{font-size:10px;color:#dcecf0}
+.source-comparison-grid article p{max-height:130px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#93aeb9;font-size:9px;line-height:1.55}
+.source-pair{display:grid;gap:5px;padding:11px;border:1px solid #244754;border-radius:8px;background:#0d2430}
+.source-pair b{font-size:10px;color:#e0eff2}.source-pair span{font-size:9px;color:#73ddd2}
+.source-pair p,.source-pair small{margin:0;color:#9bb3be;font-size:9px;line-height:1.5;overflow-wrap:anywhere}
+.analyst-review-panel{margin:18px 0;padding:18px;border:1px solid #2c5260;border-radius:12px;background:linear-gradient(145deg,rgba(13,37,48,.95),rgba(9,24,36,.95))}
+.analyst-review-panel h3{margin:6px 0 14px;color:#e2f2f4}
+.analyst-review-panel form{display:grid;gap:13px}
+.analyst-review-panel .field-row{display:grid;gap:7px}
+.analyst-review-panel .field-row>span{font-size:10px;color:#9db6c3}
+.analyst-review-panel select,.analyst-review-panel textarea{width:100%;padding:10px 11px;border:1px solid #365365;border-radius:8px;background:#091823;color:#e4f2f4;font:10px inherit}
+.analyst-review-panel textarea{resize:vertical;line-height:1.5}
+.reviewed-assets{display:grid;gap:8px}
+.reviewed-assets label{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #294554;border-radius:7px;background:#0c202c;color:#b7cbd2;font-size:9px}
+.reviewed-assets input{accent-color:#2cd0c5}
+@media(max-width:760px){.source-comparison-grid{grid-template-columns:1fr}}
