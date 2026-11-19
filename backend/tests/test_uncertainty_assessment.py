@@ -17,7 +17,7 @@ def test_ambiguous_model_score_is_high_uncertainty():
     assert result["status"] == "assessed"
     assert result["uncertainty_level"] == "high"
     assert result["score_direction"] == "ambiguous"
-    assert result["calibration_status"] == "not_calibrated"
+    assert result["calibration_status"] == "not_configured"
     assert any("ambiguous band" in reason for reason in result["reasons"])
 
 
@@ -95,7 +95,7 @@ def test_runtime_calibration_rejects_candidate_artifact(tmp_path, monkeypatch):
         "deployment_approved": False,
         "model_id": "fixture-model",
         "pipeline": "audio",
-        "dataset": {"n_held_out": 30, "n_groups_held_out": 8, "sha256": "a" * 64},
+        "dataset": {"n_held_out": 30, "n_groups_held_out": 8, "sha256": "a" * 64, "group_column": "group_id"},
         "metrics": {"calibrated_held_out": {"brier_score": 0.1}},
         "calibration_mapping": {"x_thresholds": [0.0, 1.0], "y_thresholds": [0.0, 1.0]},
     }
