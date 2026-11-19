@@ -142,7 +142,12 @@ def face_identity_consistency(path: Path, max_samples: int = 60) -> dict[str, An
     if len(rows) < 2:
         return {"status": "insufficient_faces", "faces_compared": len(rows), "note": "At least two sampled face detections are required."}
     similarities = [float(np.dot(rows[i-1][1], rows[i][1])) for i in range(1, len(rows))]
-    threshold = float(os.getenv("TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD", "0.35"))
+    try:
+        threshold = float(os.getenv("TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD", "0.35"))
+        if not 0.0 <= threshold <= 1.0:
+            threshold = 0.35
+    except ValueError:
+        threshold = 0.35
     points = [{"timestamp_seconds": rows[i][0], "cosine_similarity_to_previous_sample": round(similarities[i-1], 4)} for i in range(1, len(rows)) if similarities[i-1] < threshold]
     return {"status": "completed", "method": "within-video normalized face-embedding similarity", "faces_compared": len(rows), "adjacent_similarity_mean": round(float(np.mean(similarities)), 4), "review_threshold": threshold, "identity_change_review_points": points, "note": "This does not identify anyone or prove a face swap. Pose, occlusion, lighting, multiple people and detector errors can change embeddings; threshold is heuristic."}
 
