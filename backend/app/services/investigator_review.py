@@ -20,9 +20,13 @@ def _connect() -> sqlite3.Connection:
         finding_id TEXT NOT NULL,
         status TEXT NOT NULL CHECK(status IN ('unreviewed','confirmed','rejected','inconclusive')),
         comment TEXT NOT NULL DEFAULT '',
+        reviewer_uid TEXT NOT NULL DEFAULT 'unknown',
         updated_at TEXT NOT NULL,
         PRIMARY KEY(user_uid, report_id, finding_id)
     )""")
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(finding_reviews)").fetchall()}
+    if "reviewer_uid" not in columns:
+        db.execute("ALTER TABLE finding_reviews ADD COLUMN reviewer_uid TEXT NOT NULL DEFAULT 'unknown'")
     db.execute("CREATE INDEX IF NOT EXISTS idx_reviews_report ON finding_reviews(user_uid, report_id)")
     return db
 
@@ -39,11 +43,11 @@ def save_finding_review(
     timestamp = datetime.now(timezone.utc).isoformat()
     with _connect() as db:
         db.execute(
-            """INSERT INTO finding_reviews(user_uid,report_id,finding_id,status,comment,updated_at)
-               VALUES(?,?,?,?,?,?)
+            """INSERT INTO finding_reviews(user_uid,report_id,finding_id,status,comment,reviewer_uid,updated_at)
+               VALUES(?,?,?,?,?,?,?)
                ON CONFLICT(user_uid,report_id,finding_id) DO UPDATE SET
-               status=excluded.status, comment=excluded.comment, updated_at=excluded.updated_at""",
-            (user_uid, report_id, finding_id, status, comment.strip(), timestamp),
+               status=excluded.status, comment=excluded.comment, reviewer_uid=excluded.reviewer_uid, updated_at=excluded.updated_at""",
+            (user_uid, report_id, finding_id, status, comment.strip(), user_uid, timestamp),
         )
     return {
         "report_id": report_id, "finding_id": finding_id, "status": status,
