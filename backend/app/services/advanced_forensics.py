@@ -192,6 +192,16 @@ def verify_c2pa(path: Path) -> dict[str, Any]:
         return {"status": "unsupported_format", "standard": "C2PA Content Credentials", "note": "This file extension is not supported by the configured C2PA reader."}
     try:
         from c2pa import Reader
+    except Exception as exc:
+        # The optional native C2PA library can be blocked by Windows
+        # Application Control / DLL policy even when the Python package exists.
+        return {
+            "status": "validator_unavailable",
+            "standard": "C2PA Content Credentials",
+            "detail": f"{type(exc).__name__}: {str(exc)[:250]}",
+            "note": "The C2PA Python package is present, but its native validator could not be loaded. Check Windows Application Control policy or use a supported runtime. No provenance conclusion was made.",
+        }
+    try:
         with path.open("rb") as stream:
             with Reader(mime, stream) as reader:
                 raw = reader.json()
