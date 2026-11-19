@@ -9,7 +9,7 @@ TruthLens inspects image, video and speech for manipulation-related model signal
 ## Workspace capabilities
 
 - **Dashboard:** workspace overview, saved-case metrics, recent investigations and the four-stage review workflow.
-- **New investigation:** drag-and-drop evidence intake, image thumbnails, video previews, audio playback cards, per-file validation, removal and total upload-size summary.
+- **New investigation:** live camera photo capture, camera video recording, microphone audio recording, drag-and-drop evidence intake, image thumbnails, video previews, audio playback cards, per-file validation, removal and total upload-size summary.
 - **Analysis pipeline:** media inspection, modality analysis, evidence correlation, then human review and reporting. Browser upload progress is shown; the API does not currently stream model-stage progress.
 - **Reports:** image face regions and optional Grad-CAM-style patch attribution, sampled video-frame timeline, audio speech-window scores, metadata, SHA-256 fingerprint and cross-modal comparison.
 - **Case history:** reopen server-persisted investigations, search saved cases, and delete reports and their attribution artifacts for the signed-in account.
@@ -71,7 +71,7 @@ npm install
 npm run dev
 ```
 
-Open the frontend at http://localhost:5173 and API docs at http://127.0.0.1:8000/docs. Verify the backend at http://127.0.0.1:8000/health and http://127.0.0.1:8000/api/capabilities.
+Open the frontend at http://localhost:5173 and API docs at http://127.0.0.1:8000/docs. Verify the backend at http://127.0.0.1:8000/health and http://127.0.0.1:8000/api/capabilities. Live camera and microphone access requires a secure browser context: localhost during development or HTTPS in deployment. If Vite chooses a different localhost port, the backend CORS regex permits localhost/127.0.0.1 development ports by default.
 
 **First-run note:** PyTorch/Transformers installation and the first model download can be large. The image model loads only when an image with a detected face is analyzed; the audio model loads when an audio file is analyzed. CPU inference works but may be slow. If Windows Application Control blocks an executable, use an administrator-approved Python environment; do not disable security controls to work around the policy.
 
