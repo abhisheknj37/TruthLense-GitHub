@@ -58,7 +58,7 @@ def save_finding_review(
 def list_finding_reviews(user_uid: str, report_id: str) -> list[dict[str, Any]]:
     with _connect() as db:
         rows = db.execute(
-            """SELECT finding_id,status,comment,updated_at FROM finding_reviews
+            """SELECT finding_id,status,comment,reviewer_uid,updated_at FROM finding_reviews
                WHERE user_uid=? AND report_id=? ORDER BY updated_at""",
             (user_uid, report_id),
         ).fetchall()
