@@ -31,7 +31,7 @@ from app.services.correlation import correlate_modalities, correlate_text_eviden
 from app.services.integrity import compare_sha256
 from app.services.media import MediaError, inspect_media
 from app.services.provenance import inspect_provenance
-from app.services.ocr import extract_image_text, extract_video_frame_text
+from app.services.ocr import extract_image_text, extract_video_frame_text, compare_ocr_engines, _normalized_edit_distance
 from app.services.transcription import transcribe_audio
 from app.services.audio_review import audio_review_timeline
 from app.services.image_comparison import compare_images
@@ -119,6 +119,7 @@ async def analyze_case(
             provenance["content_credentials"] = await run_in_threadpool(verify_c2pa, temporary_path)
             if result["media_type"] == "image":
                 text_extraction = await run_in_threadpool(extract_image_text, temporary_path)
+                text_extraction["engine_comparison"] = await run_in_threadpool(compare_ocr_engines, temporary_path)
                 if text_extraction.get("analysis_eligible"):
                     extracted_text.append(text_extraction.get("analysis_text", ""))
                 model_assessment = await run_in_threadpool(image_detector.analyze_image, temporary_path, True)
@@ -370,6 +371,22 @@ def verify_case_chain_endpoint(report_id: str, current_user: dict = Depends(get_
     if events and any(event.get("owner_uid") not in (None, uid) for event in events):
         raise HTTPException(status_code=403, detail="You do not have access to this evidence ledger.")
     return verify_case_chain(report_id)
+
+
+@router.post("/ocr/benchmark")
+def benchmark_ocr(payload: dict, current_user: dict = Depends(get_current_user)):
+    """Score OCR output against investigator-supplied ground truth; never treat CER as authenticity."""
+    reference = str(payload.get("ground_truth", ""))
+    hypothesis = str(payload.get("recognized_text", ""))
+    if not reference.strip() or len(reference) > 20000 or len(hypothesis) > 20000:
+        raise HTTPException(status_code=400, detail="Provide non-empty ground_truth and texts no longer than 20,000 characters.")
+    result = _normalized_edit_distance(reference, hypothesis)
+    return {
+        **result,
+        "metric": "character_error_rate",
+        "interpretation": "Lower CER means closer transcription to the supplied reference. Results depend on reference quality and normalization; this is not an authenticity metric.",
+        "reviewer_uid": str(current_user.get("uid", "")),
+    }
 
 
 @router.post("/claims/verify")
