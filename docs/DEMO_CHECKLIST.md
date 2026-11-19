@@ -28,3 +28,9 @@
 - Text-source overlap is lexical triage only. Shared wording does not establish agreement or truth; low overlap does not establish contradiction. Review the original image, frames, audio and primary sources.
 - Cross-modal comparison compares independent model signals only; it does not prove synchronization, identity or provenance.
 - If a model fails to download/load or the sample is outside the model scope, report inconclusive.
+
+
+## Plain-text and semantic review
+- Upload a UTF-8 `.txt` or `.md` file with a claim, caption or source note alongside the image/video/audio evidence.
+- Check the report retains the text file as a separate source and includes it in lexical pairwise comparison.
+- When `TRUTHLENS_NLI_MODEL` is configured, demonstrate bidirectional candidate entailment/contradiction/neutral sentence relationships. State that these are uncalibrated model-generated candidates, not factual verdicts.
