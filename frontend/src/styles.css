@@ -950,3 +950,21 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .uncertainty-calibration>b{font-size:8px;color:#a06e28}
 .uncertainty-calibration>small{grid-column:1/-1;font-size:8px;color:#8092a9;line-height:1.5}
 @media(max-width:550px){.uncertainty-heading{flex-direction:column}.uncertainty-metrics{grid-template-columns:1fr}.uncertainty-calibration{grid-template-columns:1fr}}
+
+
+/* Plain-text evidence and semantic relationship candidates */
+.text-file-preview{height:100%;min-height:115px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#eff5ff;color:#3478c8}
+.text-file-preview b{font-size:11px;color:#254c80}
+.text-file-preview small{font-size:9px;color:#7189aa}
+.semantic-review-block{display:grid;gap:10px;margin:14px 0;padding:14px;background:#f7faff;border:1px solid #dce7f5;border-radius:11px}
+.semantic-review-block>b{font:700 9px 'DM Mono';letter-spacing:.9px;color:#315e98}
+.semantic-review-block>small{font-size:9px;color:#8091a9}
+.semantic-review-block article{display:grid;gap:6px;padding:10px;background:white;border:1px solid #e1e9f3;border-radius:8px}
+.semantic-review-block article>b{font-size:10px;color:#27466d}
+.semantic-review-block article p{margin:0;font-size:9px;line-height:1.5;color:#647b99}
+.semantic-review-block article>small{font-size:8px;color:#8999ae}
+.semantic-review-block>p{margin:0;font-size:8px;line-height:1.5;color:#8191a8}
+.semantic-candidate{justify-self:start;border-radius:99px;padding:5px 8px;font:700 8px 'DM Mono';background:#edf2fa;color:#647894}
+.semantic-candidate.contradiction_candidate{background:#fff0f1;color:#b44956}
+.semantic-candidate.mutual_entailment_candidate{background:#e8f7ef;color:#177f54}
+.semantic-candidate.one_way_entailment_candidate{background:#fff5e2;color:#9a6b1d}

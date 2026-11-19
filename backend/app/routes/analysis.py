@@ -28,6 +28,7 @@ from app.services.activity import (
     save_ocr_correction,
 )
 from app.services.correlation import correlate_modalities, correlate_text_evidence
+from app.services.semantic_review import compare_semantic_sources
 from app.services.uncertainty_assessment import build_uncertainty_assessment
 from app.services.integrity import compare_sha256
 from app.services.media import MediaError, inspect_media
@@ -135,6 +136,15 @@ async def analyze_case(
                             "whole_image_assessment": whole_image,
                             "note": "No face was detected. A separate whole-image model was used; its output is a research signal, not proof.",
                         }
+            elif result["media_type"] == "text":
+                text_extraction = result.get("text_extraction", {})
+                extracted_text.append(str(text_extraction.get("text") or ""))
+                model_assessment = {
+                    "status": "not_applicable",
+                    "prediction": "not_applicable",
+                    "model_name": None,
+                    "note": "Plain-text evidence is compared as a source; no image, video or audio classifier is applicable.",
+                }
             elif result["media_type"] == "video":
                 text_extraction = await run_in_threadpool(extract_video_frame_text, temporary_path)
                 extracted_text.extend(
@@ -303,6 +313,29 @@ async def analyze_case(
         [asset.model_dump() for asset in assets],
         context_text,
     ))
+    semantic_sources = []
+    if context_text.strip():
+        semantic_sources.append({
+            "source_id": "investigator-context",
+            "label": "Investigator-supplied claim / context",
+            "source_type": "claim",
+            "text": context_text.strip(),
+        })
+    for asset in assets:
+        extraction = asset.text_extraction or {}
+        pieces = [str(extraction.get("text") or "")]
+        pieces.extend(str(frame.get("text") or "") for frame in extraction.get("frames", []))
+        extracted = "\\n".join(piece for piece in pieces if piece).strip()
+        if extracted:
+            semantic_sources.append({
+                "source_id": asset.asset_id,
+                "label": asset.filename,
+                "source_type": asset.media_type,
+                "text": extracted,
+            })
+    text_analysis["semantic_comparison"] = await run_in_threadpool(
+        compare_semantic_sources, semantic_sources
+    )
     report_id = str(uuid4())
     evidence_events = append_case_events(
         report_id,

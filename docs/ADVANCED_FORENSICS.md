@@ -143,3 +143,12 @@ After editing `.env`, restart FastAPI from the backend folder:
 Open [http://127.0.0.1:8000/api/capabilities](http://127.0.0.1:8000/api/capabilities). The response now includes `optional_integration_status`, with readiness and missing-prerequisite information. The frontend Settings page reads the same data and provides a Refresh button.
 
 A status such as `ready_to_attempt` only means the prerequisite checks passed. Actual inference can still fail due to checkpoint incompatibility, unsupported media, model downloads, device limits or runtime errors. Configure secrets only in local `.env` files or deployment secret storage; never commit credentials or model weights.
+
+
+## Plain-text source evidence and semantic comparison
+
+TruthLens accepts bounded UTF-8 `.txt` and `.md` evidence files (maximum 1 MB each). Text is treated as content only; no markup, links or scripts are executed. The imported source is attached to the case and participates in OCR/transcript/context comparisons.
+
+Optional sentence-pair NLI review can be enabled by setting `TRUTHLENS_NLI_MODEL=cross-encoder/nli-deberta-v3-base`. This Apache-2.0 English NLI checkpoint exposes contradiction, entailment and neutral labels. Its model card reports 92.38% SNLI test accuracy and 90.04% MNLI mismatched accuracy; these are checkpoint-reported benchmark results, not TruthLens results. The local NLI module compares sentence pairs in both directions and returns candidate relationships with raw uncalibrated softmax scores. It does not verify a claim, establish what happened, or replace source inspection. Model weights load lazily on first semantic comparison; without the configuration, TruthLens reports NLI as not configured and retains lexical comparisons.
+
+Model card: https://huggingface.co/cross-encoder/nli-deberta-v3-base

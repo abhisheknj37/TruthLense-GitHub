@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import LiveCapture from "./LiveCapture";
 import {
-  Activity, AlertTriangle, ArrowRight, AudioLines, Bell, CalendarDays,
+  Activity, AlertTriangle, ArrowRight, AudioLines, Bell, CalendarDays, FileText,
   Check, CheckCircle2, ChevronRight, Clock3, Download, FileBarChart2,
   FileImage, FileJson, Fingerprint, FolderOpen, Globe, Headphones, Image as ImageIcon,
   LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, Mail, Mic, Plus, Printer,
@@ -21,7 +21,8 @@ const MAX_BYTES = 40 * 1024 * 1024;
 const ALLOWED = {
   image: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"],
   video: ["mp4", "mov", "avi", "mkv", "webm"],
-  audio: ["wav", "flac", "ogg"]
+  audio: ["wav", "flac", "ogg"],
+  text: ["txt", "md"]
 };
 
 async function sha256Hex(file) {
@@ -46,11 +47,13 @@ function fileType(file) {
   if (ALLOWED.image.includes(ext) || file.type.startsWith("image/")) return "image";
   if (ALLOWED.video.includes(ext) || file.type.startsWith("video/")) return "video";
   if (ALLOWED.audio.includes(ext) || file.type.startsWith("audio/")) return "audio";
+  if (ALLOWED.text.includes(ext) || file.type === "text/plain" || file.type === "text/markdown") return "text";
   return "unsupported";
 }
 function typeIcon(type, size = 17) {
   if (type === "video") return <Video size={size} />;
   if (type === "audio") return <AudioLines size={size} />;
+  if (type === "text") return <FileText size={size} />;
   return <ImageIcon size={size} />;
 }
 function scorePercent(value) {
@@ -612,7 +615,18 @@ function TextContextReview({ report }) {
         <small>{(item.candidate_sources || []).slice(0, 3).map((source) => source.title + (source.year ? " (" + source.year + ")" : "")).join(" · ") || "No candidate scholarly sources returned"}</small>
       </div>
     </div>)}
-    <p className="model-note">Rule-based triage and scholarly-source discovery only. Candidate papers are not proof that a claim is true or false; verify original sources and relevant passages.</p>
+    {result.semantic_comparison?.status && <div className="semantic-review-block">
+      <b>SEMANTIC EVIDENCE REVIEW</b>
+      <small>{result.semantic_comparison.status === "completed" ? result.semantic_comparison.model : "Optional NLI model not configured or unavailable"}</small>
+      {result.semantic_comparison.comparisons?.slice(0,8).map((item,index)=><article key={index}>
+        <span className={"semantic-candidate "+item.review_label}>{item.review_label.replaceAll("_"," ")}</span>
+        <b>{item.source_a} ↔ {item.source_b}</b>
+        <p>A: {item.sentence_a}</p><p>B: {item.sentence_b}</p>
+        <small>Contradiction candidate scores: {Math.max(item.a_to_b.contradiction,item.b_to_a.contradiction).toFixed(3)} · Entailment: {Math.max(item.a_to_b.entailment,item.b_to_a.entailment).toFixed(3)} · uncalibrated NLI outputs</small>
+      </article>)}
+      <p>{result.semantic_comparison.limitation || result.semantic_comparison.note}</p>
+    </div>}
+    <p className="model-note">Rule-based triage and scholarly-source discovery do not establish facts. NLI output is a candidate sentence relationship, not a verified true/false verdict. Check original media and primary sources.</p>
   </section>;
 }
 
@@ -1475,10 +1489,10 @@ export default function App() {
             <LiveCapture onCapture={addFiles} />
             <div className="intake-divider"><span>OR UPLOAD EXISTING EVIDENCE</span></div>
             <label className="dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
-              <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg"
+              <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg,.txt,.md"
                 onChange={(event) => { addFiles([...event.target.files]); event.target.value = ""; }} />
               <span className="upload-symbol"><UploadCloud size={27} /></span><b>Drag evidence files into this area</b>
-              <span>or <u>browse from device</u></span><small>Images · Videos · Speech audio · Up to 40 MB per file</small>
+              <span>or <u>browse from device</u></span><small>Images · Videos · Speech audio · TXT / MD · Up to 40 MB per file</small>
             </label>
             {files.length > 0 && <div className="evidence-upload-list">
               <div className="upload-list-heading"><b>Selected evidence</b><div><span>{files.length} files · {formatBytes(totalSize)}</span><button className="text-button danger-text" onClick={clearFiles}><Trash2 size={13} /> Clear all</button></div></div>
@@ -1486,6 +1500,7 @@ export default function App() {
                 <div className="preview-media">
                   {item.type === "image" ? <img src={item.previewUrl} alt={item.file.name} />
                     : item.type === "video" ? <video src={item.previewUrl} controls preload="metadata" />
+                    : item.type === "text" ? <div className="text-file-preview"><FileText size={34}/><b>Text evidence</b><small>UTF-8 · imported as a source</small></div>
                     : <div className="audio-preview"><span><Headphones size={25} /></span><b>Audio evidence</b><small>{item.file.name}</small><audio src={item.previewUrl} controls /></div>}
                   <button className="remove-preview" onClick={() => removeFile(item.id)} aria-label={"Remove " + item.file.name}><X size={14} /></button>
                 </div>
