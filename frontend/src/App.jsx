@@ -912,46 +912,55 @@ function LandingPage({ onStart }) {
 function AuthScreen({ mode, setMode, email, setEmail, password, setPassword, displayName, setDisplayName, busy, error, onSubmit, onGoogle, onBack }) {
   const creating = mode === "signup";
   return <div className="auth-screen">
-    <div className="auth-backdrop-glow" />
-    <div className="auth-scene auth-scene-left">
-      <div className="scene-panel-heading"><b>Evidence Files</b><span>03 ITEMS</span></div>
-      <div className="scene-evidence-grid">
-        <div className="scene-evidence scene-image"><ImageIcon size={25} /><small>image.jpg</small><i>✓</i></div>
-        <div className="scene-evidence scene-video"><Video size={25} /><small>video.mp4</small><i>✓</i></div>
-        <div className="scene-evidence scene-audio"><AudioLines size={25} /><small>audio.wav</small><i>✓</i></div>
-      </div>
-      <div className="scene-panel-foot"><Fingerprint size={15} /> Original media · Evidence preserved</div>
-    </div>
-    <div className="auth-scene auth-scene-right">
-      <div className="scene-scan-card">
-        <div className="scan-frame"><Fingerprint size={82} /><span className="scan-corner c1" /><span className="scan-corner c2" /><span className="scan-corner c3" /><span className="scan-corner c4" /></div>
-        <b>Evidence analysis</b><div className="scan-progress"><i /></div><small>Multimodal review workspace</small>
-      </div>
-      <div className="scene-meta-card"><b>Evidence Metadata</b><span>File type <strong>Image / Video / Audio</strong></span><span>Integrity <strong>SHA-256</strong></span><span>Review <strong>Human-led</strong></span></div>
-    </div>
-    <div className="auth-card">
-      <button type="button" className="auth-back" onClick={onBack}>← Back to TruthLens</button>
-      <div className="auth-brand"><span className="brand-mark"><Fingerprint size={27} /></span>
-        <div><b>Truth<span>Lens</span></b><small>DIGITAL FORENSICS & EVIDENCE REVIEW</small></div></div>
-      <div className="auth-heading">
-        <h1>{creating ? "Create your account" : "Digital Forensics & Evidence Review"}</h1>
-        <p>{creating ? "Create a secure workspace to investigate and review digital evidence." : "Analyze, verify, and report digital evidence with confidence."}</p>
-      </div>
-      <form onSubmit={onSubmit} className="auth-form">
-        {creating && <label><div className="auth-input"><UserRound size={18} /><input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Full name" required /></div></label>}
-        <label><div className="auth-input"><Mail size={19} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" required /></div></label>
-        <label><div className="auth-input"><LockKeyhole size={19} /><input type="password" autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" minLength={6} required /></div></label>
-        {error && <div className="auth-error"><AlertTriangle size={15} />{error}</div>}
-        <button className="button button-primary auth-submit" type="submit" disabled={busy}>
-          {busy ? <><LoaderCircle className="spin" size={16} /> Please wait…</> : <>{creating ? "Create account" : "Sign in"} <ArrowRight size={16} /></>}
+    <div className="auth-shell">
+      <section className="auth-welcome-panel">
+        <button className="auth-visual-brand" type="button" onClick={onBack}>
+          <span><BrandGlyph size={31}/></span><b>Truth<span>Lens</span></b>
         </button>
-      </form>
-      <div className="auth-divider"><span /> <small>OR</small> <span /></div>
-      <button className="button button-quiet auth-google" onClick={onGoogle} disabled={busy}><span className="google-g">G</span> Continue with Google</button>
-      <p className="auth-switch">{creating ? "Already have an account?" : "New to TruthLens?"}
-        <button onClick={() => setMode(creating ? "signin" : "signup")}>{creating ? "Sign in" : "Create an account"}</button>
-      </p>
-      <div className="auth-privacy"><ShieldCheck size={15} /> Secure Firebase authentication · Private analyst workspace</div>
+        <div className="auth-welcome-copy">
+          <span className="auth-eyebrow"><i/> DIGITAL FORENSICS WORKSPACE</span>
+          <h1>{creating ? <>Build a clearer view of <em>the evidence.</em></> : <>See the evidence.<br/><em>Understand the signal.</em></>}</h1>
+          <p>Bring image, video and audio analysis together with evidence integrity checks and investigator-led review.</p>
+          <div className="auth-feature-list">
+            <div><span><ImageIcon size={17}/></span><div><b>Multimodal evidence</b><small>Image · Video · Speech audio</small></div></div>
+            <div><span><Fingerprint size={17}/></span><div><b>Evidence integrity</b><small>SHA-256 fingerprints and case history</small></div></div>
+            <div><span><FileBarChart2 size={17}/></span><div><b>Human-led reporting</b><small>Review decisions and exportable reports</small></div></div>
+          </div>
+        </div>
+        <div className="auth-visual-art" aria-hidden="true">
+          <div className="auth-visual-orbit auth-orbit-one"/>
+          <div className="auth-visual-orbit auth-orbit-two"/>
+          <div className="auth-shield"><ShieldCheck size={88} strokeWidth={1.45}/></div>
+          <div className="auth-floating-chip auth-chip-top"><CheckCircle2 size={15}/><span>Evidence review</span></div>
+          <div className="auth-floating-chip auth-chip-bottom"><Fingerprint size={15}/><span>Integrity checked</span></div>
+        </div>
+        <div className="auth-panel-foot"><ShieldCheck size={14}/> Private analyst workspace <i/> Evidence-first. Human-reviewed.</div>
+      </section>
+
+      <section className="auth-card">
+        <button type="button" className="auth-back" onClick={onBack}><ArrowRight size={13}/> Back to home</button>
+        <div className="auth-mobile-brand"><span className="brand-mark"><BrandGlyph size={27}/></span><b>Truth<span>Lens</span></b></div>
+        <div className="auth-heading">
+          <span className="auth-form-kicker">{creating ? "CREATE YOUR WORKSPACE" : "WELCOME TO TRUTHLENS"}</span>
+          <h2>{creating ? "Create your account" : "Welcome back"}</h2>
+          <p>{creating ? "Set up your secure analyst workspace to get started." : "Sign in to continue to your evidence workspace."}</p>
+        </div>
+        <form onSubmit={onSubmit} className="auth-form">
+          {creating && <label className="auth-field"><span>Full name</span><div className="auth-input"><UserRound size={17}/><input autoComplete="name" value={displayName} onChange={(event)=>setDisplayName(event.target.value)} placeholder="Enter your name" required/></div></label>}
+          <label className="auth-field"><span>Email address</span><div className="auth-input"><Mail size={17}/><input type="email" autoComplete="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="you@example.com" required/></div></label>
+          <label className="auth-field"><span>Password</span><div className="auth-input"><LockKeyhole size={17}/><input type="password" autoComplete={creating?"new-password":"current-password"} value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="Enter your password" minLength={6} required/></div></label>
+          {error && <div className="auth-error"><AlertTriangle size={15}/><span>{error}</span></div>}
+          <button className="button button-primary auth-submit" type="submit" disabled={busy}>
+            {busy ? <><LoaderCircle className="spin" size={16}/> Please wait…</> : <>{creating ? "Create account" : "Sign in to TruthLens"} <ArrowRight size={16}/></>}
+          </button>
+        </form>
+        <div className="auth-divider"><span/><small>OR CONTINUE WITH</small><span/></div>
+        <button className="button button-quiet auth-google" onClick={onGoogle} disabled={busy}><span className="google-g">G</span> Continue with Google</button>
+        <p className="auth-switch">{creating ? "Already have an account?" : "New to TruthLens?"}
+          <button onClick={()=>setMode(creating?"signin":"signup")}>{creating?"Sign in":"Create an account"}</button>
+        </p>
+        <div className="auth-privacy"><LockKeyhole size={13}/> Secure Firebase authentication <i/> Your case data stays private to your account</div>
+      </section>
     </div>
     <div className="auth-footer">TRUTHLENS <span>·</span> INVESTIGATE. ANALYZE. VERIFY.</div>
   </div>;
