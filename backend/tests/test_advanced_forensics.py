@@ -40,3 +40,24 @@ def test_text_triage_never_returns_truth_verdict():
     assert result["status"] == "review_cues_extracted"
     assert "claim_verification" not in result
     assert result["language_cues"]
+
+def test_optional_integration_status_is_explicit_and_does_not_reveal_paths(monkeypatch, tmp_path):
+    from app.services.optional_integrations import get_optional_integration_status
+
+    monkeypatch.setenv("TRUTHLENS_TEMPORAL_MODEL", str(tmp_path / "missing.pt"))
+    monkeypatch.setenv("TRUTHLENS_SYNCNET_WEIGHTS", str(tmp_path / "missing.model"))
+    monkeypatch.setenv("TRUTHLENS_TESSERACT_CMD", str(tmp_path / "tesseract.exe"))
+    monkeypatch.setenv("TRUTHLENS_ASR_MODEL", "")
+    status = get_optional_integration_status()
+
+    expected = {
+        "temporal_video_model", "face_consistency", "syncnet", "c2pa",
+        "ocr", "speech_transcription", "claim_research", "score_evaluation",
+        "evidence_ledger",
+    }
+    assert expected.issubset(status)
+    assert status["temporal_video_model"]["status"] == "configured_file_missing"
+    assert status["syncnet"]["status"] == "needs_setup"
+    assert "tesseract.exe" not in str(status)
+    assert status["speech_transcription"]["status"] == "not_configured"
+
