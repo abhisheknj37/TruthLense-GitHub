@@ -108,7 +108,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pip install -r requirements-forensics.txt
 ```
 
-Tesseract OCR and FFmpeg also require system executables. Optional configuration includes `TRUTHLENS_TEMPORAL_MODEL`, `TRUTHLENS_FACE_MODEL`, `TRUTHLENS_SYNCNET_WEIGHTS`, and `TRUTHLENS_ASR_MODEL`. See [docs/ADVANCED_FORENSICS.md](docs/ADVANCED_FORENSICS.md) for setup, API routes, evaluation utilities and limitations.
+Tesseract OCR and FFmpeg also require system executables. Optional configuration includes `TRUTHLENS_TEMPORAL_MODEL`, `TRUTHLENS_FACE_MODEL`, `TRUTHLENS_FACE_SIMILARITY_REVIEW_THRESHOLD`, `TRUTHLENS_SYNCNET_WEIGHTS`, `TRUTHLENS_ASR_MODEL`, `TRUTHLENS_TESSERACT_CMD`, `TRUTHLENS_LEDGER_DB` and `HF_HOME`. The Settings page now displays backend-detected integration readiness and missing prerequisites from `/api/capabilities`; configure `backend/.env`, restart FastAPI and refresh the panel. See [docs/ADVANCED_FORENSICS.md](docs/ADVANCED_FORENSICS.md) for Windows setup, system executables, API routes, evaluation utilities and limitations.
 
 The new evidence-ledger API endpoints are authenticated and user-scoped:
 - `GET /api/cases/{report_id}/chain-of-custody`
