@@ -100,3 +100,39 @@ def test_text_region_detection_finds_text_like_block():
     regions = _detect_text_regions(Image.fromarray(pixels))
     assert regions
     assert all(x2 > x1 and y2 > y1 for x1, y1, x2, y2 in regions)
+
+
+def test_character_error_rate_matches_ground_truth_reference():
+    from app.services.ocr import _normalized_edit_distance
+
+    result = _normalized_edit_distance("hello world", "hello word")
+    assert result["status"] == "scored"
+    assert result["character_errors"] == 1
+    assert result["reference_characters"] == 11
+    assert result["cer"] == round(1 / 11, 4)
+
+
+def test_character_error_rate_rejects_empty_reference():
+    from app.services.ocr import _normalized_edit_distance
+
+    result = _normalized_edit_distance("   ", "some OCR text")
+    assert result["status"] == "invalid_reference"
+    assert result["cer"] is None
+
+
+def test_rapidocr_missing_dependency_is_reported_without_crashing(monkeypatch):
+    import builtins
+    from PIL import Image
+    from app.services.ocr import _rapidocr_extract
+
+    original_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "rapidocr_onnxruntime":
+            raise ImportError("optional dependency not installed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    result = _rapidocr_extract(Image.new("RGB", (100, 50), "white"))
+    assert result["status"] == "engine_not_installed"
+    assert result["text"] == ""
