@@ -1,17 +1,27 @@
 # TruthLens demo checklist
 
-## Before the demo
-- Start FastAPI from the `backend` directory with `py -m uvicorn app.main:app --reload`.
-- Start Vite from the `frontend` directory with `npm run dev`.
-- Open `http://127.0.0.1:8000/health` and `http://localhost:5173`.
-- Use short, non-sensitive sample files that you have permission to analyze.
+## First-run setup
+- Use a supported Python 3.11 environment.
+- From `backend/`, create and activate a virtual environment, then install `requirements.txt`.
+- Install PyTorch/Transformers dependencies before presenting; the first install and model downloads are large.
+- Copy `.env.example` to `.env` inside `backend/` only when changing model IDs or heuristic score bands.
+- Start FastAPI from `backend/` with `python -m uvicorn app.main:app --reload`.
+- Start the frontend from `frontend/` with `npm install` and `npm run dev`.
+- Test `/health` and `/api/capabilities`.
+- Run a sample image, short face-containing video and speech recording once to cache model weights before the actual presentation.
 
-## Suggested demo sequence
-1. Upload a JPEG/PNG and show dimensions and available EXIF metadata.
-2. Upload a short video and show duration, frame count and sampled timestamps.
-3. Upload a short WAV/FLAC/OGG file and show sample rate, channels and signal statistics.
-4. Upload a video and a separate audio file in one case to show the cross-modal human-review note.
-5. Explain that no trained authenticity detector is connected in this starter; do not present metadata statistics as deepfake predictions.
+## Suggested live demo
+1. Upload a face-containing image. Show the image-model signal, separate class scores and Grad-CAM-style patch-attribution overlay.
+2. Upload a short face-containing video. Show sampled frame indices, timestamps and frame-level model signals.
+3. Upload speech in WAV/FLAC/OGG. Show segment-level audio scores and the aggregate model signal.
+4. Upload the associated separate audio and video files, then explicitly select "These audio and video files belong to the same recording". Show cross-modal agreement, disagreement or inconclusive status.
+5. Export the JSON report and point out SHA-256 fingerprint, model IDs, heuristic score band and limitations.
 
-## Expected status
-The report should say `inconclusive_model_not_configured`. This is intentional and safer than fabricating a real/fake score.
+## Presentation language
+- Say "model signal", not "proof", "certain" or "verified fake".
+- The 0.35 / 0.65 thresholds are heuristic score bands, not calibrated confidence boundaries.
+- The image model is face-crop focused; a no-face image remains inconclusive.
+- The video pipeline samples frames; it is not a temporal or lip-sync detector.
+- The audio model's model card describes a multi-ethnic English training set and says more data are needed. Do not generalize it to all languages, codecs, generators or noisy recordings.
+- Cross-modal comparison compares independent model signals only; it does not prove synchronization, identity or provenance.
+- If a model fails to download/load or the sample is outside the model scope, report inconclusive.
