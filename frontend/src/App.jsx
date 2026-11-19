@@ -136,10 +136,18 @@ function exportPdf(report) {
     if (value && typeof value === "object") return objectTable(value);
     return esc(safeValue("", value));
   };
+  const compactTemporalSamples = (samples) => {
+    if (!Array.isArray(samples) || !samples.length) return "<p class='empty'>No transition samples recorded.</p>";
+    const rows = samples.map((sample) => "<tr><td>" + esc(safeValue("timestamp", sample.timestamp_seconds)) +
+      "</td><td>" + esc(safeValue("mean flow", sample.mean_flow)) +
+      "</td><td>" + esc(safeValue("flow p95", sample.flow_p95)) +
+      "</td><td>" + esc(safeValue("histogram distance", sample.histogram_distance)) + "</td></tr>").join("");
+    return "<p class='muted'>Compact transition measurements · " + samples.length + " samples</p><table class='data-table compact'><thead><tr><th>Time (s)</th><th>Mean flow</th><th>Flow P95</th><th>Histogram distance</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  };
   const objectTable = (object) => {
     if (!object || typeof object !== "object" || Array.isArray(object)) return "<p class='empty'>No structured details available.</p>";
     const rows = Object.entries(object).map(([key, value]) =>
-      "<tr><th>" + esc(titleCase(key)) + "</th><td>" + renderNested(value) + "</td></tr>"
+      "<tr><th>" + esc(titleCase(key)) + "</th><td>" + (key === "samples" && Array.isArray(value) ? compactTemporalSamples(value) : renderNested(value)) + "</td></tr>"
     ).join("");
     return "<table class='data-table'>" + rows + "</table>";
   };
@@ -216,7 +224,7 @@ function exportPdf(report) {
     ".tag{display:inline-block;border-radius:12px;padding:2px 8px;font-size:8pt;font-weight:700;background:#e9eff5;color:#294968}.tag.warning{background:#fff2d9;color:#85520a}.tag.info{background:#e8f1fb;color:#24527c}.tag.confirmed{background:#e4f4e9;color:#21633a}.tag.rejected{background:#fbe8e8;color:#8a2c2c}.tag.inconclusive{background:#fff2d9;color:#85520a}" +
     ".finding{border:1px solid #e0e6ed;border-radius:5px;padding:9px 11px;margin:7px 0;break-inside:avoid}.finding-head{display:flex;justify-content:space-between;gap:10px}.finding p,.review-row p{margin:5px 0 0}" +
     ".hash-block{background:#f6f8fa;padding:10px;border-radius:5px;margin:10px 0}.hash-block code{display:block;margin:4px 0 9px}" +
-    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}.nested-list{margin:3px 0;padding-left:18px}.nested-list li{margin:3px 0}" +
+    ".data-table{width:100%;border-collapse:collapse;margin:7px 0 12px;table-layout:fixed}.data-table th,.data-table td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid #e2e8ef;overflow-wrap:anywhere}.data-table th{width:27%;color:#53677e;font-weight:700;background:#f6f8fa}.data-table td{width:auto}.data-table.compact th,.data-table.compact td{padding:4px 6px;font-size:8pt}.data-table.compact th{width:auto}.nested-list{margin:3px 0;padding-left:18px}.nested-list li{margin:3px 0}" +
     "code{font:8pt Consolas,monospace;overflow-wrap:anywhere;word-break:break-word}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt/1.4 Consolas,monospace;background:#f6f8fa;padding:8px;border-radius:4px;margin:0}" +
     ".review-row{padding:9px 0;border-bottom:1px solid #e1e7ee;break-inside:avoid}.review-row>div{display:flex;justify-content:space-between;gap:10px}" +
     ".empty{color:#61748b;font-style:italic}.section-intro{color:#61748b;margin-top:-4px}.footer{border-top:1px solid #cbd6e2;margin-top:25px;padding-top:10px;color:#61748b;font-size:8pt}" +
@@ -1271,7 +1279,16 @@ export default function App() {
           </aside>
         </div>
         {activeReport && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={() => {
-          if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
+          try {
+            const token = await user.getIdToken();
+            const response = await axios.get(API + "/api/reports/" + encodeURIComponent(activeReport.report_id) + "/reviews", {
+              headers: { Authorization: "Bearer " + token }, timeout: 15000
+            });
+            const reportForExport = { ...activeReport, investigator_reviews: response.data.reviews || [] };
+            if (!exportPdf(reportForExport)) setError("Allow pop-ups to open the printable PDF report.");
+          } catch (err) {
+            setError(err.response?.data?.detail || "Could not load saved investigator decisions. Please retry PDF export.");
+          }
         }} />}
       </section>}
 
@@ -1280,7 +1297,16 @@ export default function App() {
           <h1>{page === "history" ? "Case history" : "Reports"}</h1><p>{page === "history" ? "Reopen saved investigations and continue reviewing the evidence." : "Open completed case reports or export an evidence summary."}</p></div>
           <button className="button button-primary" onClick={newInvestigation}><Plus size={16} /> New investigation</button></div>
         {activeReport && page === "reports" && <ReportView report={activeReport} user={user} onReviewsChange={(reviews) => setActiveReport((current) => current?.report_id === activeReport.report_id ? { ...current, investigator_reviews: reviews } : current)} onJson={() => downloadJson(activeReport)} onPdf={() => {
-          if (!exportPdf(activeReport)) setError("Allow pop-ups to open the printable PDF report.");
+          try {
+            const token = await user.getIdToken();
+            const response = await axios.get(API + "/api/reports/" + encodeURIComponent(activeReport.report_id) + "/reviews", {
+              headers: { Authorization: "Bearer " + token }, timeout: 15000
+            });
+            const reportForExport = { ...activeReport, investigator_reviews: response.data.reviews || [] };
+            if (!exportPdf(reportForExport)) setError("Allow pop-ups to open the printable PDF report.");
+          } catch (err) {
+            setError(err.response?.data?.detail || "Could not load saved investigator decisions. Please retry PDF export.");
+          }
         }} />}
         <div className="content-panel record-list-panel">
           <div className="record-toolbar"><div><span className="section-kicker">{page === "history" ? "SAVED INVESTIGATIONS" : "AVAILABLE REPORTS"}</span><h2>{filteredReports.length} records</h2></div>
