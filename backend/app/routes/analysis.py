@@ -38,6 +38,7 @@ from app.services.evidence_ledger import append_case_events, get_case_events, ve
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
 from app.services.sync_analysis import estimate_audio_video_activity_alignment
 from app.services.optional_integrations import get_optional_integration_status
+from app.services.supabase_persistence import persist_case, SupabasePersistenceError
 
 router = APIRouter(tags=["analysis"])
 MAX_FILE_BYTES = 40 * 1024 * 1024
@@ -309,6 +310,14 @@ async def analyze_case(
     )
 
     try:
+        supabase_synced = await run_in_threadpool(
+            persist_case, report.model_dump(mode="json"), str(current_user["uid"]), title
+        )
+        report.cross_modal_review.append({
+            "type": "supabase_cloud_persistence",
+            "status": "synced" if supabase_synced else "not_configured",
+            "detail": "Case metadata, asset analysis and hash-linked events were mirrored to the configured Supabase project." if supabase_synced else "Supabase service credentials are not configured; this case is stored in the local backend database only.",
+        })
         save_report_and_activity(
             user_uid=current_user["uid"],
             report=report.model_dump(mode="json"),
