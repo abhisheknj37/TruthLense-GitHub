@@ -17,7 +17,7 @@ Record EER, ROC-AUC, precision, recall, false-positive rate, calibration and rea
 The current pipeline deterministically samples up to sixteen evenly spaced frames using a two-pass sequential decoder and runs the image face detector on each. Evaluate clip-level results and per-frame results separately. This is not a temporal detector. Do not claim lip-sync detection or temporal consistency analysis until a corresponding model and dataset are implemented.
 
 ## Cross-modal evaluation
-Only compare audio/video assets when the uploader confirms they belong to the same recording. Current cross-modal logic compares independent modality scores and reports agreement/disagreement/inconclusive; it does not establish sync, identity or authenticity. Evaluate paired, timestamp-aligned samples before adding actual sync claims.
+Only compare audio/video assets when the uploader confirms they belong to the same recording. Current cross-modal logic compares independent modality scores, relative-time model-score profiles and (when configured) experimental activity alignment. These report agreement/disagreement or descriptive association; they do not establish synchronization, identity or authenticity. Evaluate paired, timestamp-aligned samples before adding actual sync claims.
 
 ## Reporting rules
 - Keep model id, model version, source and scope in every report.
@@ -32,7 +32,7 @@ Only compare audio/video assets when the uploader confirms they belong to the sa
 The audio report may expose a synthetic/spoof-direction research-model indicator with checkpoint ID, number of speech windows and median model score. It is not speaker identification, source attribution, or proof of voice cloning. Keep the acoustic waveform/timeline review separate from the synthetic-speech classifier indicator.
 
 ## Cross-modal demonstration
-Use one case containing image OCR, sampled video-frame text, an audio transcript and investigator-supplied claim text. TruthLens compares each available pair using lexical token overlap and displays previews, shared terms and comparison scope. This is not semantic contradiction detection or fact verification. A human analyst must inspect original media and primary sources.
+Use one case containing image OCR, sampled video-frame text, an audio transcript and investigator-supplied claim text. TruthLens compares each available pair using lexical token overlap and displays previews, shared terms and comparison scope. When an optional local NLI checkpoint is configured, it also reports bidirectional sentence-pair entailment/contradiction/neutral candidates. Both are triage signals, not fact verification. A human analyst must inspect original media and primary sources.
 
 The investigator review UI stores a decision and bounded rationale for each technical finding, scoped to the authenticated user and report. PDF export includes saved decisions, available reviewer metadata, timestamps, per-asset outputs, cross-modal comparisons and limitations. A saved finding decision is an analyst assessment of that finding, not a media-authenticity verdict.
 

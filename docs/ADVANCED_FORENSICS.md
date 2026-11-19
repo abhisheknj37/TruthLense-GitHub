@@ -44,11 +44,11 @@ The ledger is scoped using the authenticated Firebase UID. Hash-chain verificati
 
 ## Score evaluation and calibration
 
-Install `scikit-learn` from `requirements-forensics.txt` for the calibration utility. Prepare a labelled CSV with `label,score` columns (labels 0/1; fake-direction scores in [0,1]) and run from `backend/`:
+Install optional calibration dependencies with `pip install -r requirements-forensics.txt` when running the isotonic calibration utility. Prepare a labelled CSV with `label,score` columns (labels 0/1; fake-direction scores in [0,1]) and run from `backend/`:
 
 ```powershell
-python evaluate_scores.py labelled_scores.csv --threshold 0.65 --output evaluation-results.json
-python evaluate_calibration.py labelled_scores.csv --output calibration-results.json
+python evaluate_scores.py labelled_scores.csv --threshold 0.65 --group-column source_id --output evaluation-results.json
+python evaluate_calibration.py labelled_scores.csv --model-id "sakshamkr1/deitfake-v2" --pipeline image --group-column group_id --output calibration-image-candidate.json
 ```
 
 The score evaluator reports row-level metrics and, with `--group-column`, source-level metrics using one median score per source. The calibration utility requires `label,score,group_id`, aggregates to one median score per source group, rejects conflicting labels, performs a source-disjoint fit/held-out split and evaluates an unapproved candidate mapping. At least 60 independent source groups are required. These utilities do not automatically alter or calibrate deployed model outputs. No benchmark dataset or calibration results are bundled.
