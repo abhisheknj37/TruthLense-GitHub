@@ -162,6 +162,12 @@ def syncnet_lipsync(path_video: Path, path_audio: Path | None = None) -> dict[st
 
 def verify_c2pa(path: Path) -> dict[str, Any]:
     """Read C2PA credentials with the optional official SDK; report validation metadata conservatively."""
+    if not path.is_file():
+        return {
+            "status": "evidence_file_missing",
+            "standard": "C2PA Content Credentials",
+            "note": "The evidence file is unavailable at the supplied path, so C2PA inspection was not attempted. No provenance conclusion was made.",
+        }
     if importlib.util.find_spec("c2pa") is None:
         return {"status": "validator_not_installed", "standard": "C2PA Content Credentials", "note": "Install c2pa-python to enable manifest validation."}
     mime = {".jpg":"image/jpeg", ".jpeg":"image/jpeg", ".png":"image/png", ".webp":"image/webp", ".mp4":"video/mp4", ".mov":"video/quicktime"}.get(path.suffix.lower())
