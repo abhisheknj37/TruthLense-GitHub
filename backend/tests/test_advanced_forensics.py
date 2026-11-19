@@ -135,7 +135,7 @@ def test_temporal_torchscript_output_is_not_assumed_to_be_probability(tmp_path, 
     model_path = tmp_path / "temporal.pt"
     traced = torch.jit.trace(ScalarModel(), torch.ones((1, 8, 3, 224, 224)))
     traced.save(str(model_path))
-    frame = np.zeros((16, 16, 3), dtype=np.uint8)
+    frame = np.full((16, 16, 3), 255, dtype=np.uint8)
     monkeypatch.setenv("TRUTHLENS_TEMPORAL_MODEL", str(model_path))
     monkeypatch.setattr(
         media, "sample_video_frames",
@@ -164,7 +164,7 @@ def test_temporal_torchscript_rejects_multi_value_outputs(tmp_path, monkeypatch)
     model_path = tmp_path / "temporal-multiclass.pt"
     traced = torch.jit.trace(MultiOutput(), torch.ones((1, 8, 3, 224, 224)))
     traced.save(str(model_path))
-    frame = np.zeros((16, 16, 3), dtype=np.uint8)
+    frame = np.full((16, 16, 3), 255, dtype=np.uint8)
     monkeypatch.setenv("TRUTHLENS_TEMPORAL_MODEL", str(model_path))
     monkeypatch.setattr(
         media, "sample_video_frames",
