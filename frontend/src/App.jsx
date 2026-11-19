@@ -1018,6 +1018,7 @@ export default function App() {
 
   useEffect(() => observeAuth((nextUser) => {
     setUser(nextUser);
+    if (!nextUser) setShowAuth(false);
     setSavedReports(getReportsForUser(nextUser?.uid));
     setActiveReport(null);
     setPage("dashboard");
