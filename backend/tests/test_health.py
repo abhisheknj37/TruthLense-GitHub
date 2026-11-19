@@ -35,3 +35,13 @@ def test_cross_modal_disagreement_is_inconclusive_review():
     ]
     result = correlate_modalities(assets, paired_media=True)
     assert result[0]["status"] == "modality_disagreement"
+
+
+def test_me_requires_firebase_bearer_token():
+    response = client.get("/api/me")
+    assert response.status_code == 401
+
+
+def test_analyze_requires_firebase_bearer_token():
+    response = client.post("/api/analyze")
+    assert response.status_code == 401
