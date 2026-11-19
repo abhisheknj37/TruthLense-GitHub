@@ -47,7 +47,7 @@ def save_finding_review(
         )
     return {
         "report_id": report_id, "finding_id": finding_id, "status": status,
-        "comment": comment.strip(), "updated_at": timestamp,
+        "comment": comment.strip(), "updated_at": timestamp, "reviewer_uid": user_uid,
     }
 
 
