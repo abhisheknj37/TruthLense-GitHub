@@ -108,9 +108,16 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
     }
 
     asr_model = os.getenv("TRUTHLENS_ASR_MODEL", "").strip()
+    asr_model_display = asr_model or None
+    if asr_model and (
+        Path(asr_model).expanduser().is_absolute()
+        or asr_model.startswith(("./", "../", "~", ".\\"))
+        or (len(asr_model) > 2 and asr_model[1:3] in {":\\", ":/"})
+    ):
+        asr_model_display = asr_model.replace("\\", "/").rsplit("/", 1)[-1]
     result["speech_transcription"] = {
         "status": "configured_model_not_loaded" if asr_model else "not_configured",
-        "model": asr_model or None,
+        "model": asr_model_display,
         "note": "The model is loaded on first audio analysis; this status does not confirm that remote weights are reachable or inference succeeds.",
     }
 
