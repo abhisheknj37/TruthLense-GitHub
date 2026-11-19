@@ -151,7 +151,8 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "note": "Reports, assets, activity and evidence events use Supabase PostgreSQL when configured.",
     }
     storage_ready = bool(os.getenv("DATABASE_URL", "").strip() and os.getenv("SUPABASE_URL", "").strip()
-                         and os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip())
+                         and (os.getenv("SUPABASE_SECRET_KEY", "").strip()
+                              or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()))
     result["original_evidence_storage"] = {
         "status": "configured" if storage_ready else "not_configured",
         "bucket": os.getenv("SUPABASE_STORAGE_BUCKET", "truthlens-evidence"), "private": True,

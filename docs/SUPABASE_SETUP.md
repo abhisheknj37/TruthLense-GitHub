@@ -17,7 +17,7 @@ Set these values in `backend/.env` for local development or as backend deploymen
 
 - `DATABASE_URL`: Supabase PostgreSQL **Session Pooler** URI (port 5432) with `sslmode=require`.
 - `SUPABASE_URL`: `https://udbeldmgbzptuoenhbmn.supabase.co` for this project.
-- `SUPABASE_SERVICE_ROLE_KEY`: server-only service-role key from Supabase API settings. Never put it in frontend variables, source code or GitHub.
+- `SUPABASE_SECRET_KEY`: current server-only API secret key (`sb_secret_...`) from Supabase API Keys. Never put it in frontend variables, source code or GitHub. The backend also accepts the legacy `SUPABASE_SERVICE_ROLE_KEY` during migration.
 - `SUPABASE_STORAGE_BUCKET=truthlens-evidence`.
 
 Never send database passwords or service-role keys in chat. If storage variables are absent, reports and activity can still use PostgreSQL, but original-media retention is shown as not configured.
@@ -25,7 +25,7 @@ Never send database passwords or service-role keys in chat. If storage variables
 ## Connect and run
 
 1. In Supabase Dashboard, choose **Connect** and copy **Session pooler** (port 5432). Add `sslmode=require` and place it in `DATABASE_URL`.
-2. Add the private Storage URL and service-role key to backend secrets only.
+2. Add the private Storage URL and `SUPABASE_SECRET_KEY` to backend secrets only. Prefer the current `sb_secret_...` key; the API request sends it in the `apikey` header, not as a Bearer JWT.
 3. Install dependencies with `python -m pip install -r requirements.txt` from `backend/`.
 4. Restart FastAPI and check `GET /api/capabilities` for database and original-storage status.
 

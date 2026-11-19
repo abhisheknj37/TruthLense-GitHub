@@ -18,15 +18,18 @@ def storage_is_configured() -> bool:
 
 def _settings() -> tuple[str, str, str]:
     base = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    key = (os.getenv("SUPABASE_SECRET_KEY", "").strip()
+           or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip())
     bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "truthlens-evidence").strip()
     if not base or not key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for private evidence storage.")
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SECRET_KEY are required for private evidence storage.")
     return base, key, bucket
 
 
 def _headers(key: str, content_type: str = "application/octet-stream") -> dict[str, str]:
-    return {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": content_type}
+    # Current sb_secret keys are opaque API keys, not JWT bearer tokens.
+    # Supabase's API gateway derives the privileged role from the apikey header.
+    return {"apikey": key, "Content-Type": content_type}
 
 
 def upload_original_media(
