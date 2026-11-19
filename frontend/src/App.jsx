@@ -911,6 +911,7 @@ export default function App() {
   const [context, setContext] = useState("");
   const [caseTitle, setCaseTitle] = useState("");
   const [pairMedia, setPairMedia] = useState(false);
+  const [audioTestMode, setAudioTestMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
@@ -1087,6 +1088,7 @@ export default function App() {
     setContext("");
     setCaseTitle("");
     setPairMedia(false);
+    setAudioTestMode(false);
     setError("");
   }
   async function analyze() {
@@ -1384,6 +1386,25 @@ export default function App() {
               <textarea id="context" value={context} onChange={(event) => setContext(event.target.value)} placeholder="Source details, claimed context, known timeline, transcript or analyst notes…" rows={4} /></div>
             <label className="pair-toggle"><input type="checkbox" checked={pairMedia} onChange={(event) => setPairMedia(event.target.checked)} />
               <span><b>These separate audio and video files belong to the same recording</b><small>Enables comparison of their independent model signals. It does not verify synchronization or provenance.</small></span></label>
+            <div className="audio-test-panel">
+              <div className="section-kicker">OPTIONAL / AUDIO MODEL VALIDATION</div>
+              <h3>Compare an ElevenLabs sample with a human recording</h3>
+              <p>Generate a short sample with ElevenLabs Text to Speech. Record a consenting speaker reading the exact same sentence. Upload both files in this case to compare their model indicators.</p>
+              <ol>
+                <li>Use the same 10–20 second sentence for both recordings.</li>
+                <li>Name the ElevenLabs export ELEVENLABS_SYNTHETIC.wav.</li>
+                <li>Name the human recording HUMAN_RECORDED.wav.</li>
+                <li>Keep the language, sentence and recording conditions as similar as possible.</li>
+                <li>Compare the transcript, model scores and segment outputs. Detection is not guaranteed.</li>
+              </ol>
+              <button type="button" className="button button-quiet" onClick={() => {
+                setAudioTestMode(true);
+                setCaseTitle("TruthLens · Synthetic vs Human Audio Validation");
+                setContext("AUDIO VALIDATION TEST — Sample A: ElevenLabs-generated synthetic speech. Sample B: consenting human speaker reading the same script. Script: [paste exact sentence]. Purpose: compare research model indicators only; this does not establish speaker identity or prove voice cloning.");
+              }}>Use audio validation case template</button>
+              {audioTestMode && <p className="model-note" role="status">Template added. Replace the script placeholder and upload both labelled audio files.</p>}
+              <p className="model-note">Use only voices you own or have permission to synthesize or record. ElevenLabs generates the test sample; TruthLens performs the analysis.</p>
+            </div>
             <div className="ingest-bottom"><div className="validation-copy"><Shield size={15} /> Supported formats only · 8 files maximum · 40 MB each</div>
               <button className="button button-primary analyze-button" disabled={!files.length || loading} onClick={analyze}>
                 {loading ? <><LoaderCircle className="spin" size={17} /> {uploadProgress >= 100 ? "Models analysing evidence…" : "Uploading evidence…"}</> : <><Activity size={17} /> Initiate investigation <ArrowRight size={16} /></>}
