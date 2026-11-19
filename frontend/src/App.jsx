@@ -6,7 +6,7 @@ import {
   FileImage, FileJson, Fingerprint, FolderOpen, Globe, Headphones, Image as ImageIcon,
   LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, Mail, Mic, Plus, Printer,
   Search, Settings, Shield, ShieldAlert, ShieldCheck, Trash2, UploadCloud,
-  UserRound, Video, X
+  UserRound, Video, X, Copy
 } from "lucide-react";
 import {
   createEmailAccount, firebaseConfigured, observeAuth,
