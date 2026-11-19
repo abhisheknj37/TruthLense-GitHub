@@ -132,6 +132,86 @@ def _extract_with_confidence(pytesseract, variants: list[tuple[str, Image.Image]
     # Do not expose the internal selection score as a confidence or authenticity score.
     return selected
 
+
+def _detect_text_regions(image: Image.Image, max_regions: int = 12) -> list[tuple[int, int, int, int]]:
+    """Propose broad text blocks using morphology; these are OCR crops, not semantic detection."""
+    gray = np.asarray(image.convert("L"))
+    if min(gray.shape) < 40:
+        return []
+    binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (max(15, gray.shape[1] // 35), 3)
+    )
+    joined = cv2.dilate(binary, kernel, iterations=1)
+    joined = cv2.morphologyEx(
+        joined, cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (9, 5)),
+    )
+    contours, _ = cv2.findContours(joined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    height, width = gray.shape
+    boxes = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area_ratio = (w * h) / float(width * height)
+        if w < width * 0.08 or h < max(12, height * 0.012):
+            continue
+        if area_ratio < 0.002 or area_ratio > 0.85:
+            continue
+        pad_x, pad_y = max(8, int(w * 0.025)), max(6, int(h * 0.18))
+        x1, y1 = max(0, x - pad_x), max(0, y - pad_y)
+        x2, y2 = min(width, x + w + pad_x), min(height, y + h + pad_y)
+        boxes.append((x1, y1, x2, y2))
+    boxes.sort(key=lambda box: (box[1], box[0]))
+    # Merge overlapping/nearby boxes to avoid OCRing fragmented individual lines.
+    merged = []
+    for box in boxes:
+        x1, y1, x2, y2 = box
+        match = None
+        for index, (a, b, d, e) in enumerate(merged):
+            if x1 <= d + 12 and x2 >= a - 12 and y1 <= e + 12 and y2 >= b - 12:
+                match = index
+                break
+        if match is None:
+            merged.append(box)
+        else:
+            a, b, d, e = merged[match]
+            merged[match] = (min(a, x1), min(b, y1), max(d, x2), max(e, y2))
+    return sorted(merged, key=lambda box: (box[1], box[0]))[:max_regions]
+
+
+def _extract_region_candidate(pytesseract, variants: list[tuple[str, Image.Image]], languages: str) -> dict[str, Any] | None:
+    """OCR detected blocks and aggregate their word confidence in reading order."""
+    base = variants[0][1]
+    regions = _detect_text_regions(base)
+    if not regions:
+        return None
+    words, confidences, selected_modes = [], [], []
+    for x1, y1, x2, y2 in regions:
+        crop_variants = []
+        for name, image in variants:
+            crop = image.crop((x1, y1, x2, y2))
+            crop_variants.append((name, crop))
+        best = _extract_with_confidence(pytesseract, crop_variants, languages)
+        if best["text"]:
+            words.append(best["text"])
+            if best["mean_word_confidence"] is not None:
+                confidences.append(best["mean_word_confidence"])
+            selected_modes.append(best["page_segmentation_mode"])
+    if not words:
+        return None
+    text = "\\n".join(words)
+    confidence = round(float(np.mean(confidences)), 1) if confidences else None
+    count = sum(len(re.findall(r"\\S+", part)) for part in words)
+    return {
+        "text": text,
+        "mean_word_confidence": confidence,
+        "word_count": count,
+        "page_segmentation_mode": "region_crops",
+        "preprocessing_variant": "per_region_best",
+        "selection_score": round(_candidate_quality(text, confidence, count), 2),
+        "detected_region_count": len(regions),
+    }
+
 def _ocr_note(confidence: float | None) -> tuple[str, str]:
     if confidence is None:
         return "unavailable", "No word-level confidence was returned by Tesseract; verify the image manually."
@@ -160,7 +240,10 @@ def _ocr_analysis_gate(text: str, confidence: float | None, word_count: int) -> 
 
 def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
     variants, preprocessing = _prepare_image_variants(image)
-    result = _extract_with_confidence(pytesseract, variants, languages)
+    full_page_result = _extract_with_confidence(pytesseract, variants, languages)
+    region_result = _extract_region_candidate(pytesseract, variants, languages)
+    candidates = [full_page_result] + ([region_result] if region_result else [])
+    result = max(candidates, key=lambda item: item["selection_score"])
     confidence = result["mean_word_confidence"]
     confidence_level, confidence_note = _ocr_note(confidence)
     text = result["text"][:12000]
@@ -177,6 +260,8 @@ def _run_ocr(pytesseract, image: Image.Image, languages: str) -> dict[str, Any]:
         "confidence_level": confidence_level,
         "page_segmentation_mode": result["page_segmentation_mode"],
         "preprocessing_variant": result["preprocessing_variant"],
+        "detected_text_region_count": result.get("detected_region_count", 0),
+        "ocr_candidates_compared": ["full_page", "detected_regions"] if region_result else ["full_page"],
         "preprocessing": preprocessing,
         "note": confidence_note,
     }
