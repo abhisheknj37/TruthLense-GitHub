@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+import re
 from typing import Any
+
+_STOPWORDS = {
+    "the", "and", "for", "that", "with", "this", "from", "have", "has",
+    "was", "were", "are", "you", "your", "they", "their", "then", "than",
+    "into", "about", "after", "before", "when", "where", "what", "which",
+}
+
+
+def _tokens(value: str) -> set[str]:
+    return {
+        token for token in re.findall(r"[a-z0-9]{3,}", (value or "").lower())
+        if token not in _STOPWORDS
+    }
+
+
+def _asset_text(asset: dict[str, Any]) -> str:
+    extracted = asset.get("text_extraction") or {}
+    pieces = [str(extracted.get("text") or "")]
+    pieces.extend(str(frame.get("text") or "") for frame in extracted.get("frames", []))
+    pieces.extend(str(chunk.get("text") or "") for chunk in extracted.get("chunks", []))
+    return " ".join(piece for piece in pieces if piece).strip()
 
 
 def correlate_modalities(assets: list[dict[str, Any]], paired_media: bool) -> list[dict[str, str]]:
@@ -49,3 +71,52 @@ def correlate_modalities(assets: list[dict[str, Any]], paired_media: bool) -> li
                 "detail": detail + " Scores are not calibrated probabilities.",
             })
     return notes
+
+
+def correlate_text_evidence(
+    assets: list[dict[str, Any]], context_text: str = ""
+) -> list[dict[str, Any]]:
+    """Compare extracted text across evidence files and user context using lexical overlap only."""
+    sources: list[tuple[str, str, str]] = []
+    if context_text.strip():
+        sources.append(("user_context", "User-supplied context", context_text.strip()))
+    for asset in assets:
+        text = _asset_text(asset)
+        if text:
+            sources.append((
+                str(asset.get("asset_id") or asset.get("filename") or "evidence"),
+                str(asset.get("filename") or "Evidence file"),
+                text,
+            ))
+
+    if len(sources) < 2:
+        return [{
+            "type": "text_evidence_correlation",
+            "status": "insufficient_text_sources",
+            "detail": "At least two text-bearing sources are required. OCR and transcription availability may depend on optional local tools.",
+        }]
+
+    findings: list[dict[str, Any]] = []
+    for index, (source_id, source_name, source_text) in enumerate(sources):
+        left = _tokens(source_text)
+        for other_id, other_name, other_text in sources[index + 1:]:
+            right = _tokens(other_text)
+            union = left | right
+            overlap = len(left & right) / len(union) if union else 0.0
+            findings.append({
+                "type": "text_evidence_overlap",
+                "status": "lexical_overlap_found" if overlap >= 0.15 else "low_lexical_overlap",
+                "source_a": source_name,
+                "source_b": other_name,
+                "source_a_id": source_id,
+                "source_b_id": other_id,
+                "jaccard_overlap": round(overlap, 4),
+                "shared_terms": sorted(left & right)[:30],
+                "detail": (
+                    "Text sources share vocabulary. This does not establish that their claims agree or are true."
+                    if overlap >= 0.15 else
+                    "Little vocabulary is shared. This is not proof of contradiction; paraphrases, OCR errors and different topics can reduce overlap."
+                ),
+                "method": "case-insensitive token Jaccard overlap; no semantic entailment model",
+            })
+    return findings
