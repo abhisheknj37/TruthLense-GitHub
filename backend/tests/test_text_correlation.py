@@ -29,3 +29,31 @@ def test_text_correlation_does_not_call_low_overlap_a_contradiction():
     result = correlate_text_evidence(assets)
     assert result[0]["status"] == "low_lexical_overlap"
     assert "not proof of contradiction" in result[0]["detail"]
+
+
+
+def test_transcript_caption_and_claim_sources_are_explicitly_compared():
+    assets = [
+        {
+            "asset_id": "audio-1",
+            "filename": "speech.wav",
+            "media_type": "audio",
+            "text_extraction": {"text": "The city council approved a transport plan yesterday."},
+        },
+        {
+            "asset_id": "video-1",
+            "filename": "clip.mp4",
+            "media_type": "video",
+            "text_extraction": {"frames": [{"text": "The city council approved a transport plan yesterday."}]},
+        },
+    ]
+    result = correlate_text_evidence(
+        assets,
+        "The city council approved a transport plan yesterday.",
+    )
+    assert len(result) == 3
+    assert all(item["shared_term_count"] > 0 for item in result)
+    assert any(item["comparison_scope"] == "claim_vs_media_text" for item in result)
+    assert any(item["comparison_scope"] == "transcript_caption_or_ocr_pair" for item in result)
+    assert all(item["source_a_preview"] and item["source_b_preview"] for item in result)
+    assert all("does not establish" in item["detail"] for item in result)
