@@ -435,7 +435,6 @@ export default function App() {
       const token = await user.getIdToken();
       const response = await axios.post(API + "/api/analyze", data, {
         headers: { Authorization: "Bearer " + token },
-        headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000,
         onUploadProgress: (event) => {
           if (event.total) setUploadProgress(Math.round((event.loaded / event.total) * 100));
@@ -471,7 +470,7 @@ export default function App() {
       const token = await user.getIdToken();
       const response = await axios.get(API + "/api/me", { timeout: 8000, headers: { Authorization: "Bearer " + token } });
       setApiStatus("online");
-      setApiMessage(response.data.note || "Backend is responding.");
+      setApiMessage("Firebase identity verified by the TruthLens API.");
     } catch {
       setApiStatus("offline");
       setApiMessage("Could not reach " + API + ". Start the FastAPI backend and check VITE_API_URL.");
