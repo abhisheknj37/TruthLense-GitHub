@@ -32,6 +32,7 @@ from app.services.provenance import inspect_provenance
 from app.services.ocr import extract_image_text, extract_video_frame_text
 from app.services.transcription import transcribe_audio
 from app.services.text_analysis import analyze_text_context
+from app.services.documents import DocumentError, extract_document
 from app.services.claim_verification import verify_claims
 from app.services.evidence_ledger import append_case_events, get_case_events, verify_case_chain
 from app.services.advanced_forensics import temporal_video_forensics, face_identity_consistency, syncnet_lipsync, verify_c2pa
@@ -132,11 +133,16 @@ async def analyze_case(
                     "model_score_type": video_analysis.get("model_score_type"),
                     "note": video_analysis.get("note", ""),
                 }
-            else:
+            elif result["media_type"] == "audio":
                 text_extraction = await run_in_threadpool(transcribe_audio, temporary_path)
                 if text_extraction.get("text"):
                     extracted_text.append(text_extraction["text"])
                 model_assessment = await run_in_threadpool(audio_detector.analyze, temporary_path)
+            else:
+                text_extraction = await run_in_threadpool(extract_document, temporary_path)
+                if text_extraction.get("text"):
+                    extracted_text.append(text_extraction["text"])
+                model_assessment = {"status": "not_applicable", "prediction": "inconclusive", "model_name": None, "note": "Document evidence is reviewed through extracted text and context analysis; no deepfake classifier is applied to document files."}
 
             observations = [Observation(**item) for item in result["observations"]]
             if integrity_verification["status"] == "mismatch":
@@ -156,7 +162,9 @@ async def analyze_case(
                     severity="info",
                 ))
 
-            if model_assessment.get("status") == "model_assessed":
+            if result["media_type"] == "document":
+                pass
+            elif model_assessment.get("status") == "model_assessed":
                 observations.append(Observation(
                     code="MODEL_SIGNAL_AVAILABLE",
                     title="Research model produced an indicator",
@@ -194,7 +202,7 @@ async def analyze_case(
                 provenance=provenance,
                 text_extraction=text_extraction,
             ))
-        except MediaError as exc:
+        except (MediaError, DocumentError) as exc:
             for retained in retained_paths.values():
                 for retained_path in retained:
                     retained_path.unlink(missing_ok=True)
@@ -279,6 +287,7 @@ async def analyze_case(
         limitations=[
             "Model softmax scores are not calibrated probabilities or proof of authenticity.",
             "The image classifier is intended for face-cropped images and may not generalize to all image types or generators.",
+            "Text, Markdown, CSV, PDF and DOCX files are parsed for text review; scanned PDF pages without selectable text require OCR and may remain empty.",
             "The audio model was trained on a limited set of speech/TTS sources; performance on unseen systems, languages, codecs and noisy recordings is uncertain.",
             "Video analysis samples a limited number of face-bearing frames; it is not a validated temporal deepfake detector.",
             "Cross-modal comparison checks separate model signals only; it does not prove that audio and video are synchronized or belong to the same source.",
