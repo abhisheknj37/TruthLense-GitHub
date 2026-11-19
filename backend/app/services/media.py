@@ -13,6 +13,8 @@ from PIL import Image, ExifTags, UnidentifiedImageError
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 AUDIO_EXTS = {".wav", ".flac", ".ogg"}
+TEXT_EXTS = {".txt", ".md"}
+MAX_TEXT_BYTES = 1 * 1024 * 1024
 
 
 class MediaError(ValueError):
@@ -27,6 +29,8 @@ def media_type_for(path: Path) -> str:
         return "video"
     if ext in AUDIO_EXTS:
         return "audio"
+    if ext in TEXT_EXTS:
+        return "text"
     raise MediaError(f"Unsupported file extension: {ext or 'unknown'}")
 
 
@@ -186,6 +190,46 @@ def inspect_video(path: Path, sample_limit: int = 8) -> tuple[dict[str, Any], li
     }]
     return metadata, observations, samples
 
+def inspect_text(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    """Read a bounded plain-text evidence file without executing or interpreting markup."""
+    size = path.stat().st_size
+    if size > MAX_TEXT_BYTES:
+        raise MediaError("Plain-text evidence exceeds the 1 MB text-file limit.")
+    try:
+        raw = path.read_bytes()
+        content = raw.decode("utf-8-sig", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise MediaError("Text evidence must be UTF-8 encoded (UTF-8 with or without BOM).") from exc
+    if not content.strip():
+        raise MediaError("Text evidence is empty.")
+    truncated = len(content) > 20000
+    extraction = {
+        "status": "completed",
+        "engine": "UTF-8 plain-text reader",
+        "text": content[:20000],
+        "character_count": len(content),
+        "word_count": len(content.split()),
+        "analysis_eligible": True,
+        "truncated_for_report": truncated,
+        "note": "Plain-text source imported as evidence. Markup is treated as text; no links, scripts or embedded content are executed.",
+    }
+    metadata = {
+        "encoding": "UTF-8",
+        "byte_count": size,
+        "character_count": len(content),
+        "word_count": len(content.split()),
+        "truncated_for_report": truncated,
+    }
+    observations = [{
+        "code": "TEXT_EVIDENCE_IMPORTED",
+        "title": "Plain-text evidence imported",
+        "detail": "UTF-8 text was read and attached as a source for claim, transcript and caption comparison. It is not independently verified.",
+        "category": "text",
+        "severity": "info",
+    }]
+    return metadata, observations, extraction
+
+
 def inspect_audio(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     try:
         info = sf.info(str(path))
@@ -241,14 +285,25 @@ def inspect_media(path: Path) -> dict[str, Any]:
     elif media_type == "video":
         metadata, observations, samples = inspect_video(path)
         forensic_parameters = {}
-    else:
+    elif media_type == "audio":
         metadata, observations = inspect_audio(path)
         samples = []
         forensic_parameters = {}
+    else:
+        metadata, observations, text_extraction = inspect_text(path)
+        samples = []
+        forensic_parameters = {}
+        return {
+            "media_type": media_type, "metadata": metadata,
+            "observations": observations, "sampled_frames": samples,
+            "forensic_parameters": forensic_parameters,
+            "text_extraction": text_extraction,
+        }
     return {
         "media_type": media_type,
         "metadata": metadata,
         "observations": observations,
         "sampled_frames": samples,
         "forensic_parameters": forensic_parameters,
+        "text_extraction": {},
     }
