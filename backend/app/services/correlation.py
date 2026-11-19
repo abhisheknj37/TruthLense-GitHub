@@ -77,16 +77,19 @@ def correlate_text_evidence(
     assets: list[dict[str, Any]], context_text: str = ""
 ) -> list[dict[str, Any]]:
     """Compare extracted text across evidence files and user context using lexical overlap only."""
-    sources: list[tuple[str, str, str]] = []
+    sources: list[tuple[str, str, str, str]] = []
     if context_text.strip():
-        sources.append(("user_context", "User-supplied context", context_text.strip()))
+        sources.append(("user_context", "Investigator-supplied claim / context", context_text.strip(), "claim"))
     for asset in assets:
         text = _asset_text(asset)
         if text:
+            media_type = str(asset.get("media_type") or "evidence")
+            source_kind = {"audio": "transcript", "video": "caption_or_video_ocr", "image": "image_ocr"}.get(media_type, "evidence_text")
             sources.append((
                 str(asset.get("asset_id") or asset.get("filename") or "evidence"),
                 str(asset.get("filename") or "Evidence file"),
                 text,
+                source_kind,
             ))
 
     if len(sources) < 2:
@@ -97,9 +100,9 @@ def correlate_text_evidence(
         }]
 
     findings: list[dict[str, Any]] = []
-    for index, (source_id, source_name, source_text) in enumerate(sources):
+    for index, (source_id, source_name, source_text, source_kind) in enumerate(sources):
         left = _tokens(source_text)
-        for other_id, other_name, other_text in sources[index + 1:]:
+        for other_id, other_name, other_text, other_kind in sources[index + 1:]:
             right = _tokens(other_text)
             union = left | right
             overlap = len(left & right) / len(union) if union else 0.0
@@ -110,6 +113,9 @@ def correlate_text_evidence(
                 "source_b": other_name,
                 "source_a_id": source_id,
                 "source_b_id": other_id,
+                "source_a_kind": source_kind,
+                "source_b_kind": other_kind,
+                "comparison_scope": "claim_vs_media_text" if "claim" in (source_kind, other_kind) else "transcript_caption_or_ocr_pair",
                 "jaccard_overlap": round(overlap, 4),
                 "shared_terms": sorted(left & right)[:30],
                 "detail": (
@@ -118,5 +124,8 @@ def correlate_text_evidence(
                     "Little vocabulary is shared. This is not proof of contradiction; paraphrases, OCR errors and different topics can reduce overlap."
                 ),
                 "method": "case-insensitive token Jaccard overlap; no semantic entailment model",
+                "shared_term_count": len(left & right),
+                "source_a_preview": source_text[:500],
+                "source_b_preview": other_text[:500],
             })
     return findings
