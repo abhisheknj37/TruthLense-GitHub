@@ -321,7 +321,7 @@ function exportPdf(report) {
     (report.text_analysis ? "<h2>04 · Text and claim-context review</h2>" + objectTable(report.text_analysis) : "") +
     "<h2>05 · Investigator decisions</h2><p class='section-intro'>Human decisions are recorded separately from automated model outputs.</p>" + reviews +
     "<h2>06 · Evidence event history</h2>" + events +
-    (technicalAppendix ? "<h2>07 · Technical appendix · full OCR and temporal measurements</h2><p class='section-intro'>Full machine OCR and per-transition measurements are retained here for traceability. OCR text excluded by the quality gate is not used for claim-context analysis.</p>" + technicalAppendix : "") +
+    "<h2>07 · Technical appendix · full OCR and temporal measurements</h2><p class='section-intro'>Full machine OCR and per-transition measurements are retained here for traceability. OCR text excluded by the quality gate is not used for claim-context analysis.</p>" + (technicalAppendix || "<p class='empty'>No additional OCR or temporal measurements were recorded for this case.</p>") +
     "<h2>08 · Limitations, caveats and required follow-up</h2><ul>" + (limitations || "<li>No limitations were supplied by the analysis service.</li>") + "</ul>" +
     "<div class='summary'><b>Interpretation notice</b><p>Model scores are not calibrated probabilities or proof of authenticity. A matching SHA-256 digest establishes byte-level consistency for the received file, not creator identity or content truth. Findings require qualified human review and original-source context.</p></div>" +
     "<div class='footer'>TRUTHLENS · Confidential investigative working document · Preserve original source media and maintain chain-of-custody records separately.</div>" +
