@@ -58,6 +58,8 @@ def test_optional_integration_status_is_explicit_and_does_not_reveal_paths(monke
     assert expected.issubset(status)
     assert status["temporal_video_model"]["status"] == "configured_file_missing"
     assert status["syncnet"]["status"] == "needs_setup"
-    assert "tesseract.exe" not in str(status)
+    assert str(tmp_path) not in str(status)
+    assert "database" not in status["evidence_ledger"]
+    assert "database_name" in status["evidence_ledger"]
     assert status["speech_transcription"]["status"] == "not_configured"
 
