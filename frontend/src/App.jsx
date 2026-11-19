@@ -21,7 +21,8 @@ const MAX_BYTES = 40 * 1024 * 1024;
 const ALLOWED = {
   image: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"],
   video: ["mp4", "mov", "avi", "mkv", "webm"],
-  audio: ["wav", "flac", "ogg"]
+  audio: ["wav", "flac", "ogg"],
+  document: ["txt", "md", "csv", "pdf", "docx"]
 };
 
 async function sha256Hex(file) {
@@ -46,11 +47,13 @@ function fileType(file) {
   if (ALLOWED.image.includes(ext) || file.type.startsWith("image/")) return "image";
   if (ALLOWED.video.includes(ext) || file.type.startsWith("video/")) return "video";
   if (ALLOWED.audio.includes(ext) || file.type.startsWith("audio/")) return "audio";
+  if (ALLOWED.document.includes(ext) || file.type === "application/pdf") return "document";
   return "unsupported";
 }
 function typeIcon(type, size = 17) {
   if (type === "video") return <Video size={size} />;
   if (type === "audio") return <AudioLines size={size} />;
+  if (type === "document") return <FileBarChart2 size={size} />;
   return <ImageIcon size={size} />;
 }
 function scorePercent(value) {
@@ -207,6 +210,7 @@ function Pipeline({ loading, uploadProgress, report }) {
 }
 
 function ModelAssessment({ asset }) {
+  if (asset.media_type === "document") return null;
   const model = asset.model_assessment || {};
   const video = asset.video_analysis || {};
   const details = asset.media_type === "video" ? video : model;
@@ -943,7 +947,7 @@ export default function App() {
         </div>
 
         <label className="quick-upload">
-          <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg"
+          <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg,.txt,.md,.csv,.pdf,.docx"
             onChange={(event) => { addFiles([...event.target.files]); event.target.value = ""; setPage("new"); }} />
           <span className="quick-upload-main"><UploadCloud size={30} /><b>Upload Evidence</b><small>Drag, drop or click to select files</small></span>
           <span className="quick-upload-types">
@@ -1002,10 +1006,10 @@ export default function App() {
             <LiveCapture onCapture={addFiles} />
             <div className="intake-divider"><span>OR UPLOAD EXISTING EVIDENCE</span></div>
             <label className="dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
-              <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg"
+              <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.mp4,.mov,.avi,.mkv,.webm,.wav,.flac,.ogg,.txt,.md,.csv,.pdf,.docx"
                 onChange={(event) => { addFiles([...event.target.files]); event.target.value = ""; }} />
               <span className="upload-symbol"><UploadCloud size={27} /></span><b>Drag evidence files into this area</b>
-              <span>or <u>browse from device</u></span><small>Images · Videos · Speech audio · Up to 40 MB per file</small>
+              <span>or <u>browse from device</u></span><small>Images · Videos · Speech audio · Text / PDF / DOCX · Up to 40 MB per file</small>
             </label>
             {files.length > 0 && <div className="evidence-upload-list">
               <div className="upload-list-heading"><b>Selected evidence</b><div><span>{files.length} files · {formatBytes(totalSize)}</span><button className="text-button danger-text" onClick={clearFiles}><Trash2 size={13} /> Clear all</button></div></div>
@@ -1013,7 +1017,8 @@ export default function App() {
                 <div className="preview-media">
                   {item.type === "image" ? <img src={item.previewUrl} alt={item.file.name} />
                     : item.type === "video" ? <video src={item.previewUrl} controls preload="metadata" />
-                    : <div className="audio-preview"><span><Headphones size={25} /></span><b>Audio evidence</b><small>{item.file.name}</small><audio src={item.previewUrl} controls /></div>}
+                    : item.type === "audio" ? <div className="audio-preview"><span><Headphones size={25} /></span><b>Audio evidence</b><small>{item.file.name}</small><audio src={item.previewUrl} controls /></div>
+                    : <div className="audio-preview"><span><FileBarChart2 size={25} /></span><b>Document evidence</b><small>{item.file.name}</small></div>}
                   <button className="remove-preview" onClick={() => removeFile(item.id)} aria-label={"Remove " + item.file.name}><X size={14} /></button>
                 </div>
                 <div className="preview-meta"><b title={item.file.name}>{item.file.name}</b><span>{item.type.toUpperCase()} · {formatBytes(item.file.size)}</span></div>
@@ -1036,6 +1041,7 @@ export default function App() {
             <div className="scope-item"><span className="scope-icon cyan"><ImageIcon size={18} /></span><div><b>Images</b><small>Face crops, class scores and optional patch attribution</small></div></div>
             <div className="scope-item"><span className="scope-icon purple"><Video size={18} /></span><div><b>Video</b><small>Up to eight sampled frames with timestamps</small></div></div>
             <div className="scope-item"><span className="scope-icon green"><Mic size={18} /></span><div><b>Speech audio</b><small>Speech windows and independent model scores</small></div></div>
+            <div className="scope-item"><span className="scope-icon amber"><FileBarChart2 size={18} /></span><div><b>Text & documents</b><small>TXT, Markdown, CSV, searchable PDF and DOCX extraction</small></div></div>
             <div className="scope-item"><span className="scope-icon amber"><Fingerprint size={18} /></span><div><b>Evidence integrity</b><small>SHA-256 digest and media metadata</small></div></div>
             <div className="notice"><AlertTriangle size={16} /><span>Some files may be inconclusive when there is no detectable face, insufficient speech, decoding errors or unsupported model scope.</span></div>
           </aside>
