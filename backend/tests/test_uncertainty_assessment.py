@@ -84,3 +84,51 @@ def test_missing_model_score_is_not_reported_as_authenticity():
     assert result["uncertainty_level"] == "high"
     assert result["raw_model_score"] is None
     assert "not be interpreted as evidence of authenticity" in result["interpretation"]
+
+
+def test_runtime_calibration_rejects_candidate_artifact(tmp_path, monkeypatch):
+    import json
+    from app.services.calibration_registry import load_approved_calibration, apply_approved_calibration
+
+    artifact = {
+        "approval_status": "candidate",
+        "deployment_approved": False,
+        "model_id": "fixture-model",
+        "pipeline": "audio",
+        "dataset": {"n_held_out": 30, "n_groups_held_out": 8, "sha256": "a" * 64},
+        "metrics": {"calibrated_held_out": {"brier_score": 0.1}},
+        "calibration_mapping": {"x_thresholds": [0.0, 1.0], "y_thresholds": [0.0, 1.0]},
+    }
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    monkeypatch.setenv("TRUTHLENS_CALIBRATION_ARTIFACT", str(path))
+    calibration = load_approved_calibration("fixture-model", "audio")
+    assert calibration["status"] == "candidate_not_approved"
+    assert apply_approved_calibration(0.5, calibration) is None
+
+
+def test_runtime_calibration_requires_exact_model_and_pipeline_and_approval(tmp_path, monkeypatch):
+    import json
+    from app.services.calibration_registry import load_approved_calibration, apply_approved_calibration
+
+    artifact = {
+        "approval_status": "approved",
+        "deployment_approved": True,
+        "approved_by": "reviewer",
+        "approved_at": "2026-11-20T00:00:00+00:00",
+        "model_id": "fixture-model",
+        "pipeline": "audio",
+        "dataset": {"n_held_out": 30, "n_groups_held_out": 8, "sha256": "a" * 64},
+        "metrics": {"calibrated_held_out": {"brier_score": 0.1}},
+        "calibration_mapping": {"x_thresholds": [0.0, 0.5, 1.0], "y_thresholds": [0.0, 0.2, 0.9]},
+    }
+    path = tmp_path / "approved.json"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    monkeypatch.setenv("TRUTHLENS_CALIBRATION_ARTIFACT", str(path))
+
+    mismatch = load_approved_calibration("other-model", "audio")
+    assert mismatch["status"] == "model_or_pipeline_mismatch"
+    calibration = load_approved_calibration("fixture-model", "audio")
+    assert calibration["status"] == "approved"
+    assert apply_approved_calibration(0.5, calibration) == 0.2
+    assert apply_approved_calibration(0.25, calibration) == 0.1

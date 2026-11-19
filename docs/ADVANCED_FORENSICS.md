@@ -159,3 +159,10 @@ Model card: https://huggingface.co/cross-encoder/nli-deberta-v3-base
 Original uploads are not retained unless the investigator checks the per-case retention option. Opted-in originals are stored under a private backend-only directory, separated by a SHA-256-derived owner folder, report UUID and asset UUID. The report records the storage key, digest, size, timestamp and expiry. Authenticated downloads re-check report ownership and the stored file digest. Deleting the case removes its originals. Configure `TRUTHLENS_ORIGINALS_DIR` to a private durable volume and `TRUTHLENS_ORIGINAL_RETENTION_DAYS` to the chosen retention period.
 
 The chain-of-custody API also exports a JSON manifest. Set a strong server-only `TRUTHLENS_LEDGER_HMAC_KEY` and `TRUTHLENS_LEDGER_KEY_ID` to add HMAC-SHA256 signatures over event hashes. Verification checks the local hash chain and HMAC signatures. This is stronger tamper evidence against edits by actors without the secret, but it is still not an independently timestamped or externally witnessed record. Never commit secrets or retained evidence directories.
+
+
+## Group-aware model-score calibration
+
+The calibration script requires a source-group column and uses a group-separated fit/held-out partition. It exports a candidate artifact containing the dataset SHA-256, model ID, pipeline, fit/held-out group counts, raw-vs-calibrated held-out metrics and the isotonic mapping. Candidate artifacts are never applied at runtime. An authorized reviewer must explicitly mark the artifact approved and record reviewer/time; runtime then checks the exact model ID and modality pipeline and rejects mismatches or insufficient held-out evidence.
+
+No labelled dataset or approved calibration artifact is bundled. Until project-specific validation is completed and approved, TruthLens must continue to report raw model outputs and heuristic review uncertainty as uncalibrated.

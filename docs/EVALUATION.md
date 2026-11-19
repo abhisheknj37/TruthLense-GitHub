@@ -48,3 +48,16 @@ For every assessed media item, the API reports a separate uncertainty assessment
 The assessment uses labels such as high, moderate and lower review uncertainty. These are heuristic evidence-review labels, not statistical confidence intervals or estimates of the probability of correctness. A single sample is marked as limited support. Mixed real-direction and fake-direction sample results increase uncertainty even when the aggregate median crosses a decision threshold.
 
 No model is labelled calibrated. Calibration requires a representative, independently labelled held-out validation dataset for that specific model and deployment domain, followed by reliability analysis and a documented calibration method. Do not claim calibrated confidence until that evaluation is completed.
+
+
+### Calibration candidate workflow
+
+Use one CSV per model checkpoint and modality pipeline, with columns `label,score,group_id` (0=real, 1=fake). Each `group_id` must identify the independent source group such as original video, subject/session or source image—not a frame/window extracted from that source.
+
+Example:
+
+```powershell
+python evaluate_calibration.py labelled_scores.csv --model-id "Hemgg/Deepfake-audio-detection" --pipeline audio --group-column group_id --output calibration-audio-candidate.json
+```
+
+Review the output's group split, dataset hash, raw vs calibrated held-out Brier/log-loss/ECE and reliability bins. Do not approve the artifact unless the held-out sources are independent and representative of the deployment domain. Calibration is specific to the checkpoint, pipeline and score distribution.

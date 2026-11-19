@@ -155,6 +155,31 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "note": "Related scholarly candidates are returned for human review; no true/false verdict is generated.",
     }
 
+    calibration_artifact = os.getenv("TRUTHLENS_CALIBRATION_ARTIFACT", "").strip()
+    calibration_status = "not_configured"
+    if calibration_artifact:
+        from app.services.calibration_registry import load_approved_calibration
+        try:
+            # Capability page is global; list each modality against its configured checkpoint.
+            statuses = {
+                pipeline: load_approved_calibration(
+                    os.getenv("TRUTHLENS_" + pipeline.upper() + "_MODEL", "") or None,
+                    pipeline,
+                ).get("status")
+                for pipeline in ("image", "video", "audio")
+            }
+            calibration_status = "configured"
+        except Exception:
+            statuses = {pipeline: "check_failed" for pipeline in ("image", "video", "audio")}
+    else:
+        statuses = {pipeline: "not_configured" for pipeline in ("image", "video", "audio")}
+    result["calibration"] = {
+        "status": calibration_status,
+        "artifact": Path(calibration_artifact).name if calibration_artifact else None,
+        "pipelines": statuses,
+        "note": "Runtime calibration only applies to an explicitly approved artifact with an exact model ID and modality match. Candidate artifacts are not applied.",
+    }
+
     result["score_evaluation"] = {
         "status": "ready" if _module_available("sklearn") else "dependency_missing",
         "missing": [] if _module_available("sklearn") else ["scikit-learn package"],

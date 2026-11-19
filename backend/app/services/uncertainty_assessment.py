@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.calibration_registry import apply_approved_calibration, load_approved_calibration
+
 REAL_THRESHOLD = 0.35
 FAKE_THRESHOLD = 0.65
 
@@ -171,6 +173,10 @@ def build_uncertainty_assessment(
         "multiple_samples": "Multiple sampled inference units",
     }[support]
 
+    model_id = str((video if media_type == "video" else model).get("model_name") or model.get("model_name") or "")
+    calibration = load_approved_calibration(model_id or None, media_type)
+    calibrated_probability = apply_approved_calibration(score, calibration)
+    calibration_status = calibration.get("status", "not_configured")
     return {
         "status": "assessed",
         "uncertainty_level": uncertainty,
@@ -185,15 +191,22 @@ def build_uncertainty_assessment(
         "sample_score_range": {"minimum": round(sample_min, 5), "maximum": round(sample_max, 5), "range": spread},
         "sample_disagreement": disagreement,
         "reasons": reasons,
-        "calibration_status": "not_calibrated",
+        "calibration_status": "approved_calibration_applied" if calibrated_probability is not None else calibration_status,
+        "calibrated_fake_probability": round(calibrated_probability, 5) if calibrated_probability is not None else None,
+        "calibration_artifact": calibration.get("artifact"),
+        "calibration_model_id": calibration.get("model_id"),
+        "calibration_held_out_count": calibration.get("held_out_count"),
+        "calibration_held_out_group_count": calibration.get("held_out_group_count"),
+        "calibration_approved_by": calibration.get("approved_by"),
+        "calibration_approved_at": calibration.get("approved_at"),
         "method": (
             "Heuristic review of aggregate score location, distance beyond the decision threshold, "
-            "within-sample score range and sample count. This is not a probability interval, "
-            "statistical confidence estimate or model calibration."
+            "within-sample score range and sample count. This is not a probability interval or confidence estimate. "
+            + ("An approved, model-specific isotonic calibration mapping is applied to the aggregate fake-direction score." if calibrated_probability is not None else "No approved model-specific calibration mapping was available.")
         ),
         "interpretation": (
             "The model score is a relative classifier output. The uncertainty level describes score separation "
             "and the amount/consistency of sampled evidence only; it does not measure the probability that the "
-            "prediction is correct."
+            "prediction is correct. " + (f"The approved held-out calibration maps the aggregate score to {calibrated_probability:.3f}; this estimate is specific to the recorded model, pipeline and dataset." if calibrated_probability is not None else "The raw score is uncalibrated and must not be presented as a confidence percentage.")
         ),
     }
