@@ -226,15 +226,26 @@ function ModelAssessment({ asset }) {
     </div>}
     {details.note && <p className="model-note">{details.note}</p>}
     {asset.media_type === "image" && model.faces?.length > 0 && <div className="face-results">
-      <b>Face-region analysis</b>
+      <b>Detected face crops · analyst review</b>
+      <p className="model-note">Check that each crop contains a real face before interpreting its score. Incorrect detections can affect the median.</p>
       {model.faces.map((face) => <div className="face-result" key={face.face_index}>
         <div className="face-meta"><span>Face {face.face_index + 1} · {predictionLabel(face.prediction)}</span>
-          <small>Region: {face.bounding_box_xywh.join(", ")}</small></div>
-        {face.gradcam_overlay_base64
-          ? <img className="gradcam-image" src={"data:image/png;base64," + face.gradcam_overlay_base64} alt="Transformer patch attribution overlay" />
-          : <p className="model-note">Patch attribution was not available for this face.</p>}
-        <p className="cam-caption">Patch attribution highlights regions that influenced this model. It is not a manipulation mask or proof.</p>
+          <small>Region: {(face.bounding_box_xywh || []).join(", ")}</small></div>
+        <div className="face-review-grid">
+          {face.crop_preview_base64 && <img className="gradcam-image" src={"data:image/jpeg;base64," + face.crop_preview_base64} alt={"Detected face crop " + (face.face_index + 1)} />}
+          <div className="score-list">
+            <ScoreBar label="Fake model score" value={face.scores?.fake} />
+            <ScoreBar label="Real model score" value={face.scores?.real} />
+          </div>
+        </div>
+        {face.gradcam_overlay_base64 && <img className="gradcam-image" src={"data:image/png;base64," + face.gradcam_overlay_base64} alt="Transformer patch attribution overlay" />}
+        <p className="cam-caption">Attribution is not a manipulation mask or proof. Scores are uncalibrated model outputs.</p>
       </div>)}
+      {model.aggregation && <div className="provenance-note"><b>HOW THE OVERALL SCORE IS CALCULATED</b>
+        <span>{model.aggregation.face_count} detected face(s) · median aggregation</span>
+        <small>{model.aggregation.explanation}</small>
+        <small>Individual fake scores: {(model.aggregation.individual_fake_scores || []).map(scorePercent).join(" · ")}</small>
+      </div>}
     </div>}
     {asset.media_type === "video" && video.temporal_forensics && <div className="provenance-note">
       <b>TEMPORAL VIDEO REVIEW</b><span>{video.temporal_forensics.status || "not available"}</span>
