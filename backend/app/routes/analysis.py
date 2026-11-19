@@ -210,6 +210,26 @@ async def analyze_case(
 
     assets_for_correlation = [asset.model_dump() for asset in assets]
     cross_modal = correlate_modalities(assets_for_correlation, pair_media)
+    try:
+        if pair_media and retained_paths.get("video") and retained_paths.get("audio"):
+            cross_modal.append({
+                "type": "experimental_audio_video_activity_alignment",
+                **await run_in_threadpool(estimate_audio_video_activity_alignment, retained_paths["video"][0], retained_paths["audio"][0]),
+            })
+            cross_modal.append({
+                "type": "ai_lip_sync",
+                **await run_in_threadpool(syncnet_lipsync, retained_paths["video"][0], retained_paths["audio"][0]),
+            })
+        elif retained_paths.get("video"):
+            cross_modal.append({
+                "type": "embedded_video_lip_sync",
+                **await run_in_threadpool(syncnet_lipsync, retained_paths["video"][0]),
+            })
+    finally:
+        for paths in retained_paths.values():
+            for retained_path in paths:
+                retained_path.unlink(missing_ok=True)
+
     if context_text.strip():
         cross_modal.append({
             "type": "user_context",
@@ -231,24 +251,47 @@ async def analyze_case(
             "the supplied evidence remains inconclusive."
         )
 
+    combined_text = "\\n\\n".join([context_text, *extracted_text]).strip()
+    text_analysis = analyze_text_context(combined_text)
+    if combined_text:
+        text_analysis["claim_verification"] = await verify_claims(combined_text)
+    report_id = str(uuid4())
+    evidence_events = append_case_events(
+        report_id,
+        [asset.model_dump() for asset in assets],
+        str(current_user.get("uid", "unknown")),
+    )
+
     title = case_title.strip() or (
         f"Review · {assets[0].filename}" if len(assets) == 1
         else f"Investigation · {len(assets)} evidence files"
     )
     report = CaseReport(
-        report_id=str(uuid4()),
+        report_id=report_id,
         created_at=datetime.now(timezone.utc).isoformat(),
         overall_status=overall_status,
         summary=summary,
         assets=assets,
         cross_modal_review=cross_modal,
+        text_analysis=text_analysis,
+        evidence_events=evidence_events,
         limitations=[
             "Model softmax scores are not calibrated probabilities or proof of authenticity.",
             "The image classifier is intended for face-cropped images and may not generalize to all image types or generators.",
             "The audio model was trained on a limited set of speech/TTS sources; performance on unseen systems, languages, codecs and noisy recordings is uncertain.",
             "Video analysis samples a limited number of face-bearing frames; it is not a validated temporal deepfake detector.",
             "Cross-modal comparison checks separate model signals only; it does not prove that audio and video are synchronized or belong to the same source.",
-            "A matching SHA-256 digest verifies the bytes received by this API against the browser's pre-upload digest; it does not prove source identity or content authenticity.",
+            "A matching SHA-256 digest verifies received bytes against the browser's pre-upload digest; it does not prove source identity or content authenticity.",
+            "Image forensic parameters are descriptive lighting, texture, noise and compression measurements, not validated manipulation detectors.",
+            "OCR requires optional pytesseract and the Tesseract system executable; text extraction may contain errors.",
+            "Speech transcription requires TRUTHLENS_ASR_MODEL and a compatible ASR checkpoint; transcription may contain errors.",
+            "Text analysis is rule-based triage, not fact-checking. OpenAlex candidate sources are not proof that a claim is supported.",
+            "Optical-flow temporal indicators are heuristic review cues, not a trained temporal deepfake classifier.",
+            "Face consistency requires optional InsightFace and model weights; embeddings compare faces within a clip and do not identify people.",
+            "SyncNet requires its optional package, compatible checkpoint and FFmpeg; its output is a synchronization signal, not manipulation probability.",
+            "C2PA validation requires the optional c2pa-python SDK and configured trust anchors; manifest presence is not proof of authenticity.",
+            "The local SQLite evidence ledger is hash-linked and verifiable but lacks external anchoring, trusted timestamps and protection against full database replacement.",
+            "Coarse audio/video activity alignment is experimental; it is not phoneme-to-viseme lip-sync verification.",
             "All results require human review and original-source context.",
         ],
         human_review_required=True,
