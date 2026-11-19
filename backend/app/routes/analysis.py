@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth import get_current_user
 from app.detectors.audio import audio_detector
 from app.detectors.image import image_detector
+from app.detectors.whole_image import whole_image_detector
 from app.detectors.video import VideoDeepfakeAnalyzer
 from app.schemas import AssetResult, CaseReport, Observation
 from app.services.activity import (
@@ -117,6 +118,17 @@ async def analyze_case(
                 if text_extraction.get("text"):
                     extracted_text.append(text_extraction["text"])
                 model_assessment = await run_in_threadpool(image_detector.analyze_image, temporary_path, True)
+                if model_assessment.get("status") == "inconclusive_no_face_detected":
+                    whole_image = await run_in_threadpool(whole_image_detector.analyze, temporary_path)
+                    model_assessment["whole_image_assessment"] = whole_image
+                    if whole_image.get("status") == "model_assessed":
+                        model_assessment = {
+                            **whole_image,
+                            "detector_path": "whole_image_no_face_detected",
+                            "face_model_status": "inconclusive_no_face_detected",
+                            "whole_image_assessment": whole_image,
+                            "note": "No face was detected. A separate whole-image model was used; its output is a research signal, not proof.",
+                        }
             elif result["media_type"] == "video":
                 text_extraction = await run_in_threadpool(extract_video_frame_text, temporary_path)
                 extracted_text.extend(frame.get("text", "") for frame in text_extraction.get("frames", []))
