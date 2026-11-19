@@ -9,6 +9,7 @@ import firebase_admin
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth as firebase_auth
+from firebase_admin import exceptions as firebase_exceptions
 from firebase_admin import credentials
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -76,7 +77,7 @@ def get_current_user(
             app=app,
             check_revoked=True,
         )
-    except (firebase_admin.exceptions.FirebaseError, ValueError) as exc:
+    except (firebase_exceptions.FirebaseError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Your sign-in token is invalid or expired. Please sign in again.",
