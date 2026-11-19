@@ -61,7 +61,7 @@ async def save_upload(upload: UploadFile, destination: Path) -> int:
 
 @router.post("/analyze", response_model=CaseReport)
 async def analyze_case(
-    files: Annotated[list[UploadFile], File(description="One or more image, video or audio files")],
+    files: Annotated[list[UploadFile], File(description="One or more image, video, audio or document evidence files")],
     context_text: Annotated[str, Form()] = "",
     pair_media: Annotated[bool, Form()] = False,
     sha256_digests: Annotated[str, Form()] = "[]",
@@ -69,7 +69,7 @@ async def analyze_case(
     current_user: dict = Depends(get_current_user),
 ):
     if not files:
-        raise HTTPException(status_code=400, detail="Upload at least one media file.")
+        raise HTTPException(status_code=400, detail="Upload at least one evidence file.")
     if len(files) > MAX_FILES_PER_CASE:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES_PER_CASE} files per case.")
     try:
@@ -422,6 +422,7 @@ def capabilities():
             "image": [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"],
             "video": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
             "audio": [".wav", ".flac", ".ogg"],
+            "document": [".txt", ".md", ".csv", ".pdf", ".docx"],
         },
         "max_file_bytes": MAX_FILE_BYTES,
         "max_files_per_case": MAX_FILES_PER_CASE,
@@ -438,6 +439,7 @@ def capabilities():
             "image face-crop classification and optional transformer patch attribution",
             "video sampled-frame classification and timestamps",
             "audio speech-window classification",
+            "document text extraction for TXT, Markdown, CSV, searchable PDF and DOCX",
             "paired audio/video model-signal comparison when user confirms related media",
             "client-to-server SHA-256 integrity comparison",
             "user-scoped persistent report and activity history",
