@@ -6,6 +6,7 @@ def test_reviews_are_user_scoped_and_persisted(tmp_path, monkeypatch):
     saved = reviews.save_finding_review("user-a", "case-1", "finding-1", "confirmed", "Reviewed source frame.")
     assert saved["status"] == "confirmed"
     assert reviews.list_finding_reviews("user-a", "case-1")[0]["comment"] == "Reviewed source frame."
+    assert reviews.list_finding_reviews("user-a", "case-1")[0]["reviewer_uid"] == "user-a"
     assert reviews.list_finding_reviews("user-b", "case-1") == []
 
 
