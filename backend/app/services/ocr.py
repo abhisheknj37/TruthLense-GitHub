@@ -58,41 +58,39 @@ def extract_video_frame_text(path: Path, max_frames: int = 8) -> dict[str, Any]:
         import pytesseract
     except ImportError:
         return {"status": "unavailable", "frames": [], "note": "Install pytesseract and the Tesseract OCR engine to enable video-frame OCR."}
-    languages = _configure_tesseract(pytesseract)
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        return {"status": "error", "frames": [], "note": "Video could not be opened for OCR."}
-    frames = []
     try:
-        count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
-        indexes = np.linspace(0, max(0, count - 1), min(max_frames, count), dtype=int) if count else []
-        for index in indexes:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, int(index))
-            ok, frame = cap.read()
-            if not ok:
-                continue
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        from app.services.media import sample_video_frames
+        languages = _configure_tesseract(pytesseract)
+        decoded = sample_video_frames(path, max_frames)
+        frames = []
+        for sample in decoded["sampled_frames"]:
+            rgb = cv2.cvtColor(sample["frame"], cv2.COLOR_BGR2RGB)
             image = _prepare_image(Image.fromarray(rgb))
             text = pytesseract.image_to_string(image, lang=languages, config="--oem 3 --psm 11").strip()
             if text:
                 frames.append({
-                    "timestamp_seconds": round(float(index) / fps, 3) if fps else None,
-                    "frame_index": int(index),
+                    "timestamp_seconds": sample["timestamp_seconds"],
+                    "frame_index": sample["frame_index"],
                     "text": text[:3000],
                 })
+        if decoded["frame_count"] == 0:
+            return {
+                "status": "insufficient_video_frames",
+                "frames": [],
+                "note": "The video opened, but sequential decoding returned no readable frames.",
+            }
+        return {
+            "status": "completed" if frames else "completed_no_text",
+            "frames": frames,
+            "languages": languages,
+            "decoded_frame_count": decoded["frame_count"],
+            "sampled_frame_count": len(decoded["sampled_frames"]),
+            "note": "Sequentially decoded sampled-frame OCR only; not full-video transcription or claim verification. Non-English languages require installed Tesseract traineddata.",
+        }
     except Exception as exc:
         missing = "TesseractNotFoundError" in type(exc).__name__
         return {
             "status": "engine_not_found" if missing else "error",
-            "frames": frames,
-            "note": "Tesseract executable not found; configure TRUTHLENS_TESSERACT_CMD." if missing else f"Video OCR stopped: {type(exc).__name__}. Check installed language traineddata.",
+            "frames": [],
+            "note": "Tesseract executable not found; configure TRUTHLENS_TESSERACT_CMD." if missing else f"Video OCR could not complete: {type(exc).__name__}. Check the video decoder and installed language traineddata.",
         }
-    finally:
-        cap.release()
-    return {
-        "status": "completed",
-        "frames": frames,
-        "languages": languages,
-        "note": "Sampled-frame OCR only; not full-video transcription or claim verification. Non-English languages require installed Tesseract traineddata.",
-    }
