@@ -23,6 +23,13 @@ const ALLOWED = {
   audio: ["wav", "flac", "ogg"]
 };
 
+async function sha256Hex(file) {
+  if (!globalThis.crypto?.subtle) throw new Error("Secure browser hashing is unavailable.");
+  const bytes = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 function formatBytes(bytes = 0) {
   if (!bytes) return "0 B";
   if (bytes < 1024) return bytes + " B";
@@ -231,7 +238,8 @@ function EvidenceCard({ asset }) {
       {Object.entries(asset.metadata || {}).filter(([key, value]) => typeof value !== "object" && value !== null).slice(0, 8)
         .map(([key, value]) => <div key={key}><small>{key.replaceAll("_", " ")}</small><b>{String(value)}</b></div>)}
     </div>
-    <div className="hash-line"><small><Fingerprint size={12} /> SHA-256 EVIDENCE FINGERPRINT</small><code>{asset.sha256}</code></div>
+    <div className="hash-line"><small><Fingerprint size={12} /> SHA-256 EVIDENCE FINGERPRINT</small><code>{asset.sha256}</code>
+      <span className={"hash-verification " + (asset.integrity_verification?.status || "recorded")}>{asset.integrity_verification?.status === "match" ? "✓ Browser and API digests match" : asset.integrity_verification?.status === "mismatch" ? "⚠ Digest mismatch — review required" : "Fingerprint recorded · not rechecked"}</span></div>
     <ModelAssessment asset={asset} />
     {(asset.observations || []).map((item) => <div className="observation" key={item.code}>
       <CheckCircle2 size={16} /><div><b>{item.title}</b><p>{item.detail}</p></div>
@@ -290,6 +298,67 @@ function CaseRow({ report, onOpen }) {
     <span className="case-indicator">{assessed} assessed</span>
     <ChevronRight size={17} />
   </button>;
+}
+
+function IntegrityPanel({ reports }) {
+  const [copiedId, setCopiedId] = useState("");
+  const assets = reports.flatMap((report) => report.assets.map((asset) => ({
+    ...asset, caseTitle: report.case_title || "Forensic investigation"
+  }))).slice(0, 6);
+  async function copyHash(asset) {
+    try {
+      await navigator.clipboard.writeText(asset.sha256 || "");
+      setCopiedId(asset.asset_id);
+      window.setTimeout(() => setCopiedId(""), 1800);
+    } catch { setCopiedId("unavailable"); }
+  }
+  const matched = assets.filter((asset) => asset.integrity_verification?.status === "match").length;
+  return <section className="content-panel integrity-panel">
+    <div className="insight-panel-title"><div><span className="section-kicker">EVIDENCE INTEGRITY</span><h2>SHA-256 fingerprints</h2></div><span className="insight-icon"><Fingerprint size={19} /></span></div>
+    <div className="integrity-summary"><b>{matched} / {assets.length}</b><span>browser-to-server hash matches in recent evidence</span></div>
+    {assets.length ? <div className="integrity-list">{assets.map((asset) => {
+      const state = asset.integrity_verification?.status;
+      const label = state === "match" ? "Verified match" : state === "mismatch" ? "Mismatch" : state === "unavailable" ? "Not rechecked" : "Fingerprint recorded";
+      return <div className="integrity-item" key={asset.asset_id}>
+        <div className="integrity-item-top"><span>{typeIcon(asset.media_type, 14)}<b title={asset.filename}>{asset.filename}</b></span><span className={"integrity-status " + (state || "recorded")}>{label}</span></div>
+        <div className="integrity-digest"><code title={asset.sha256}>{asset.sha256 || "SHA-256 unavailable"}</code><button onClick={() => copyHash(asset)} disabled={!asset.sha256} title="Copy SHA-256 digest"><Copy size={13} />{copiedId === asset.asset_id ? "Copied" : copiedId === "unavailable" ? "Blocked" : "Copy"}</button></div>
+        <small className="integrity-case">{asset.caseTitle} · {asset.integrity_verification?.checked_at ? "Checked " + formatDate(asset.integrity_verification.checked_at) : "Server fingerprint saved"}</small>
+      </div>;
+    })}</div> : <div className="insight-empty"><Fingerprint size={24} /><b>No evidence fingerprints yet</b><span>Run an investigation to create SHA-256 evidence fingerprints.</span></div>}
+    <p className="insight-footnote">A match confirms that the uploaded bytes produced the same digest in the browser and API. It does not prove who created the file or that its contents are authentic.</p>
+  </section>;
+}
+
+function ActivityTimeline({ reports, onOpen }) {
+  return <section className="content-panel activity-panel">
+    <div className="insight-panel-title"><div><span className="section-kicker">WORKSPACE LOG</span><h2>Recent activity</h2></div><span className="insight-icon"><Clock3 size={18} /></span></div>
+    {reports.length ? <div className="activity-timeline">{reports.slice(0, 5).map((report) =>
+      <button className="activity-event" key={report.report_id} onClick={() => onOpen(report)}>
+        <span className="activity-dot"><CheckCircle2 size={13} /></span><span className="activity-event-copy"><b>Investigation saved</b>
+          <small>{report.case_title || "Forensic investigation"}</small>
+          <small>{report.assets.length} evidence item{report.assets.length === 1 ? "" : "s"} · {report.assets.filter((asset) => asset.sha256).length} fingerprints recorded</small></span>
+        <time>{formatDate(report.created_at)}</time>
+      </button>
+    )}</div> : <div className="insight-empty"><Clock3 size={24} /><b>No recent activity</b><span>Completed investigations will appear here.</span></div>}
+    <p className="insight-footnote">Events are based on saved investigation reports in this browser. This is not a server-side audit log.</p>
+  </section>;
+}
+
+function HeatmapPreview({ reports, onOpen }) {
+  const entry = reports.flatMap((report) => report.assets.map((asset) => ({ report, asset })))
+    .find(({ asset }) => asset.media_type === "image" && asset.model_assessment?.faces?.some((face) => face.gradcam_overlay_base64));
+  const face = entry?.asset.model_assessment.faces.find((item) => item.gradcam_overlay_base64);
+  return <section className="content-panel heatmap-panel">
+    <div className="insight-panel-title"><div><span className="section-kicker">MODEL EXPLAINABILITY</span><h2>Heatmap preview</h2></div><span className="insight-icon"><Activity size={18} /></span></div>
+    {entry && face ? <button className="heatmap-preview-button" onClick={() => onOpen(entry.report)} title="Open the full case report">
+      <div className="heatmap-image-wrap"><img src={"data:image/png;base64," + face.gradcam_overlay_base64} alt="Grad-CAM-style transformer patch attribution overlay for analyzed image evidence" /></div>
+      <div className="heatmap-caption"><span><b>{entry.asset.filename}</b><small>{entry.report.case_title || "Forensic investigation"}</small></span><span className="heatmap-open">Open report <ArrowRight size={13} /></span></div>
+      <span className="heatmap-model-note">Patch attribution · Face crop model</span>
+    </button> : <div className="heatmap-empty"><div className="heatmap-placeholder"><Fingerprint size={39} /><span>ATTRIBUTION PREVIEW</span></div>
+      <b>No heatmap available yet</b><p>Upload an image with a detectable face. The preview appears when the image model successfully produces patch attribution.</p>
+      <span className="heatmap-limit">Not every image returns a heatmap. Video frame heatmaps are not currently generated.</span></div>}
+    <p className="insight-footnote">The overlay highlights image patches that influenced the model output. It is not a manipulation mask or proof of tampering.</p>
+  </section>;
 }
 
 function AuthScreen({ mode, setMode, email, setEmail, password, setPassword, displayName, setDisplayName, busy, error, onSubmit, onGoogle }) {
@@ -467,8 +536,30 @@ export default function App() {
           if (event.total) setUploadProgress(Math.round((event.loaded / event.total) * 100));
         }
       });
+      const verifiedAssets = [];
+      for (const asset of response.data.assets || []) {
+        const selected = files.find((item) => item.file.name === asset.filename && item.file.size === asset.size_bytes);
+        if (!selected || !asset.sha256) {
+          verifiedAssets.push({ ...asset, integrity_verification: { status: "unavailable" } });
+          continue;
+        }
+        try {
+          const browserDigest = await sha256Hex(selected.file);
+          verifiedAssets.push({
+            ...asset,
+            integrity_verification: {
+              status: browserDigest.toLowerCase() === asset.sha256.toLowerCase() ? "match" : "mismatch",
+              browser_sha256: browserDigest,
+              checked_at: new Date().toISOString()
+            }
+          });
+        } catch {
+          verifiedAssets.push({ ...asset, integrity_verification: { status: "unavailable" } });
+        }
+      }
       const report = {
         ...response.data,
+        assets: verifiedAssets,
         case_title: caseTitle.trim() || (files.length === 1 ? "Review · " + files[0].file.name : "Investigation · " + files.length + " evidence files"),
         case_context: context
       };
@@ -632,6 +723,11 @@ export default function App() {
           <div className="stat-card"><span><FileImage size={17} /> MEDIA ANALYZED</span><b>{reviewedAssets}</b><small>Evidence items across cases</small></div>
         </div>
 
+        <div className="dashboard-insights-grid">
+          <IntegrityPanel reports={latestReports} />
+          <ActivityTimeline reports={latestReports} onOpen={openReport} />
+          <HeatmapPreview reports={latestReports} onOpen={openReport} />
+        </div>
         <div className="dashboard-lower">
           <div className="content-panel recent-panel">
             <div className="panel-title"><div><span className="section-kicker">CASE REGISTER</span><h2>Recent investigations</h2></div>
