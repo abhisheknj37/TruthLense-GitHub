@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -76,6 +77,19 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def _connection():
+    connection = _connect()
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def save_report_and_activity(
     *,
     user_uid: str,
@@ -140,7 +154,7 @@ def save_report_and_activity(
         "created_at": timestamp,
         "evidence": evidence_summary,
     }
-    with _connect() as connection:
+    with _connection() as connection:
         connection.execute(
             """INSERT OR REPLACE INTO case_reports
                (report_id, user_uid, case_title, created_at, report_json)
