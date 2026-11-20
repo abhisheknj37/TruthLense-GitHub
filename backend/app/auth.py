@@ -31,6 +31,13 @@ def _firebase_app() -> firebase_admin.App:
                 credential_info = json.loads(service_json)
             except json.JSONDecodeError as exc:
                 raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON must contain valid JSON.") from exc
+            if not isinstance(credential_info, dict):
+                raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON must be a JSON object.")
+            service_project_id = credential_info.get("project_id")
+            if service_project_id and service_project_id != project_id:
+                raise RuntimeError(
+                    "FIREBASE_PROJECT_ID must match the project_id in FIREBASE_SERVICE_ACCOUNT_JSON."
+                )
             credential = credentials.Certificate(credential_info)
         elif service_path:
             path = Path(service_path)
@@ -40,6 +47,14 @@ def _firebase_app() -> firebase_admin.App:
                 raise RuntimeError(f"Firebase service-account file not found: {path}")
             credential = credentials.Certificate(str(path))
         else:
+            # Render does not provide Google Application Default Credentials.
+            # Require an explicit service-account secret instead of failing later
+            # during token verification with a misleading invalid-token response.
+            if os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER"):
+                raise RuntimeError(
+                    "FIREBASE_SERVICE_ACCOUNT_JSON is missing. Add the complete Firebase "
+                    "service-account JSON as a secret environment variable on Render."
+                )
             # On Google Cloud, use Application Default Credentials.
             credential = credentials.ApplicationDefault()
 
