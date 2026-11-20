@@ -5,8 +5,6 @@ import re
 import threading
 from typing import Any
 
-import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 _LOCK = threading.Lock()
 _MODEL_NAME: str | None = None
@@ -29,6 +27,8 @@ def _load_model(model_name: str) -> tuple[Any, Any]:
             raise RuntimeError(_LOAD_ERROR)
         _MODEL_NAME, _TOKENIZER, _MODEL, _LOAD_ERROR = model_name, None, None, None
         try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = AutoModelForSequenceClassification.from_pretrained(model_name)
             model.eval()
@@ -51,6 +51,7 @@ def _label_indices(model) -> dict[str, int]:
 
 
 def _score_pairs(tokenizer, model, pairs: list[tuple[str, str]]) -> list[dict[str, float]]:
+    import torch
     labels = _label_indices(model)
     output = []
     for start in range(0, len(pairs), 8):
