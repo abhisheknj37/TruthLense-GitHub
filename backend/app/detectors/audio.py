@@ -5,10 +5,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-import librosa
 import numpy as np
-import torch
-from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 
 MODEL_ID = os.getenv("TRUTHLENS_AUDIO_MODEL", "Hemgg/Deepfake-audio-detection")
@@ -30,7 +27,7 @@ class AudioDeepfakeDetector:
     def __init__(self) -> None:
         self.model = None
         self.processor = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = None
         self.lock = threading.Lock()
         self.load_error: str | None = None
         self.fake_index: int | None = None
@@ -41,6 +38,10 @@ class AudioDeepfakeDetector:
         return MODEL_ID
 
     def _load(self) -> None:
+        import torch
+        from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+        if self.device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.model is not None:
             return
         if self.load_error:
@@ -75,6 +76,8 @@ class AudioDeepfakeDetector:
                 raise RuntimeError(self.load_error) from exc
 
     def analyze(self, path: Path) -> dict[str, Any]:
+        import librosa
+        import torch
         try:
             self._load()
             audio, _ = librosa.load(str(path), sr=SAMPLE_RATE, mono=True)

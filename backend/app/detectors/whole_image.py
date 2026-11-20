@@ -7,9 +7,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-import torch
 from PIL import Image, ImageOps
-from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 # This checkpoint is an older AI-art detector, not a general deepfake-photo
 # or pixel-manipulation detector. Keep it configurable and disclose its scope.
@@ -49,7 +47,7 @@ class WholeImageAIDetector:
     def __init__(self) -> None:
         self.processor = None
         self.model = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = None
         self.lock = threading.Lock()
         self.error: str | None = None
         self.ai_index: int | None = None
@@ -57,6 +55,10 @@ class WholeImageAIDetector:
         self.labels: dict[str, str] = {}
 
     def _load(self) -> None:
+        import torch
+        from transformers import AutoImageProcessor, AutoModelForImageClassification
+        if self.device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.model is not None:
             return
         if self.error:
@@ -81,6 +83,7 @@ class WholeImageAIDetector:
                 raise RuntimeError(self.error) from exc
 
     def analyze(self, path: Path) -> dict[str, Any]:
+        import torch
         try:
             self._load()
             with Image.open(path) as source:

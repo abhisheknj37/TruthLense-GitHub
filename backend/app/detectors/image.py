@@ -9,10 +9,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-import torch
-import torch.nn.functional as F
 from PIL import Image, ImageOps
-from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 
 MODEL_ID = os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2")
@@ -52,7 +49,7 @@ class ImageDeepfakeDetector:
     def __init__(self) -> None:
         self.model = None
         self.processor = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = None
         self.lock = threading.Lock()
         self.load_error: str | None = None
         self.fake_index: int | None = None
@@ -66,6 +63,10 @@ class ImageDeepfakeDetector:
         return MODEL_ID
 
     def _load(self) -> None:
+        import torch
+        from transformers import AutoImageProcessor, AutoModelForImageClassification
+        if self.device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.model is not None:
             return
         if self.load_error:
@@ -192,6 +193,8 @@ class ImageDeepfakeDetector:
         return base64.b64encode(output.getvalue()).decode("ascii")
 
     def _predict_crop(self, face: Image.Image, make_cam: bool) -> dict[str, Any]:
+        import torch
+        import torch.nn.functional as F
         self._load()
         inputs = self.processor(images=face, return_tensors="pt")
         inputs = {key: value.to(self.device) for key, value in inputs.items()}
