@@ -64,7 +64,6 @@ class ImageDeepfakeDetector:
 
     def _load(self) -> None:
         import torch
-        import torch.nn.functional as F
         from transformers import AutoImageProcessor, AutoModelForImageClassification
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -194,6 +193,8 @@ class ImageDeepfakeDetector:
         return base64.b64encode(output.getvalue()).decode("ascii")
 
     def _predict_crop(self, face: Image.Image, make_cam: bool) -> dict[str, Any]:
+        import torch
+        import torch.nn.functional as F
         self._load()
         inputs = self.processor(images=face, return_tensors="pt")
         inputs = {key: value.to(self.device) for key, value in inputs.items()}
