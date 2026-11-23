@@ -3,13 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import librosa
+from app.services.ml_runtime import heavy_models_enabled
+
 import numpy as np
 
 
 def audio_review_timeline(path: Path, sample_rate: int = 16000, points: int = 160) -> dict[str, Any]:
     """Return compact waveform and acoustic-change review cues, not a spoof verdict."""
+    if not heavy_models_enabled():
+        return {"status": "skipped_low_memory", "waveform": [], "acoustic_review_points": [], "note": "Audio timeline extraction was skipped on this low-memory host to protect API availability."}
     try:
+        import librosa
         audio, sr = librosa.load(str(path), sr=sample_rate, mono=True)
         if audio.size == 0:
             return {"status": "empty_audio", "waveform": [], "segments": []}
