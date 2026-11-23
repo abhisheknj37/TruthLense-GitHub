@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from app.services.ml_runtime import heavy_models_enabled
+
 _pipeline = None
 _pipeline_error = None
 
@@ -12,6 +14,8 @@ def transcribe_audio(path: Path) -> dict[str, Any]:
     """Optional local ASR; configure TRUTHLENS_ASR_MODEL to enable."""
     global _pipeline, _pipeline_error
     model_name = os.getenv("TRUTHLENS_ASR_MODEL", "").strip()
+    if not heavy_models_enabled():
+        return {"status": "skipped_low_memory", "text": "", "model": model_name or None, "note": "Local ASR was skipped because heavyweight ML inference is disabled on this low-memory host."}
     if not model_name:
         return {"status": "not_configured", "text": "", "note": "Set TRUTHLENS_ASR_MODEL to enable optional speech transcription."}
     if _pipeline is None and _pipeline_error is None:

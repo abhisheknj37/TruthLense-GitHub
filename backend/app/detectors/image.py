@@ -11,6 +11,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+from app.services.ml_runtime import heavy_models_enabled, skipped_model_result
+
 
 MODEL_ID = os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2")
 IMAGE_MODEL_LICENSE = "Apache-2.0 (model card)"
@@ -271,6 +273,8 @@ class ImageDeepfakeDetector:
 
     def analyze_pil_frame(self, image: Image.Image, include_cam: bool = False) -> dict[str, Any]:
         """Run the same face-crop detector on an in-memory video frame."""
+        if not heavy_models_enabled():
+            return skipped_model_result("video-frame image", MODEL_ID)
         try:
             crops = self._face_crops(image)
             if not crops:
@@ -302,6 +306,8 @@ class ImageDeepfakeDetector:
             return {"status": "model_error", "model_name": MODEL_ID, "prediction": "inconclusive", "uncertainty_band": "unknown", "faces": [], "note": str(exc)}
 
     def analyze_image(self, path: Path, include_cam: bool = True) -> dict[str, Any]:
+        if not heavy_models_enabled():
+            return skipped_model_result("image", MODEL_ID)
         try:
             with Image.open(path) as raw:
                 image = ImageOps.exif_transpose(raw).convert("RGB")
