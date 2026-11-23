@@ -9,6 +9,7 @@ from PIL import Image
 
 from app.detectors.image import ImageDeepfakeDetector
 from app.services.media import sample_video_frames
+from app.services.ml_runtime import heavy_models_enabled, skipped_model_result
 
 
 class VideoDeepfakeAnalyzer:
@@ -17,6 +18,8 @@ class VideoDeepfakeAnalyzer:
         self.max_frames = max_frames
 
     def analyze(self, path: Path) -> dict[str, Any]:
+        if not heavy_models_enabled():
+            return skipped_model_result("video", self.image_detector.model_name)
         try:
             decoded = sample_video_frames(path, self.max_frames)
         except Exception as exc:
