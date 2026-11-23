@@ -7,15 +7,17 @@ import threading
 from pathlib import Path
 from typing import Any
 
-import torch
 from PIL import Image, ImageOps
-from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 # This checkpoint is an older AI-art detector, not a general deepfake-photo
 # or pixel-manipulation detector. Keep it configurable and disclose its scope.
 MODEL_ID = os.getenv("TRUTHLENS_WHOLE_IMAGE_MODEL", "umm-maybe/AI-image-detector")
 FAKE_THRESHOLD = float(os.getenv("TRUTHLENS_WHOLE_IMAGE_FAKE_THRESHOLD", "0.65"))
 REAL_THRESHOLD = float(os.getenv("TRUTHLENS_WHOLE_IMAGE_REAL_THRESHOLD", "0.35"))
+torch = None
+AutoImageProcessor = None
+AutoModelForImageClassification = None
+
 MODEL_SCOPE = (
     "Older AI-art classification research checkpoint (2022); not validated for "
     "deepfake photographs, image splicing, copy-move edits, screenshots or unseen generators."
@@ -49,7 +51,7 @@ class WholeImageAIDetector:
     def __init__(self) -> None:
         self.processor = None
         self.model = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = "cpu"
         self.lock = threading.Lock()
         self.error: str | None = None
         self.ai_index: int | None = None
@@ -57,6 +59,12 @@ class WholeImageAIDetector:
         self.labels: dict[str, str] = {}
 
     def _load(self) -> None:
+        global torch, AutoImageProcessor, AutoModelForImageClassification
+        if torch is None:
+            import torch as torch_module
+            from transformers import AutoImageProcessor as image_processor, AutoModelForImageClassification as image_model
+            torch = torch_module
+            AutoImageProcessor, AutoModelForImageClassification = image_processor, image_model
         if self.model is not None:
             return
         if self.error:
