@@ -11,6 +11,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from app.services.ml_runtime import heavy_models_enabled
+
 
 def temporal_video_forensics(path: Path, max_samples: int = 120) -> dict[str, Any]:
     """Compute sequentially decoded temporal review cues; not a trained deepfake verdict."""
@@ -70,6 +72,8 @@ def temporal_video_forensics(path: Path, max_samples: int = 120) -> dict[str, An
     }
 
 def _run_temporal_torchscript(path: Path) -> dict[str, Any]:
+    if not heavy_models_enabled():
+        return {"status": "skipped_low_memory", "note": "Optional temporal ML inference is disabled on this low-memory host."}
     model_path = os.getenv("TRUTHLENS_TEMPORAL_MODEL", "").strip()
     if not model_path or not Path(model_path).is_file():
         return {"status": "model_not_configured", "required_configuration": "TRUTHLENS_TEMPORAL_MODEL", "note": "No validated temporal classifier configured; heuristic results remain review cues."}
@@ -118,6 +122,8 @@ def _run_temporal_torchscript(path: Path) -> dict[str, Any]:
 
 def face_identity_consistency(path: Path, max_samples: int = 60) -> dict[str, Any]:
     """Compare face embeddings only within a clip; this function never identifies people."""
+    if not heavy_models_enabled():
+        return {"status": "skipped_low_memory", "note": "Optional face-embedding inference is disabled on this low-memory host."}
     if importlib.util.find_spec("insightface") is None:
         return {"status": "dependency_missing", "required_package": "insightface", "note": "Optional InsightFace dependency is not installed; no face consistency comparison was performed."}
     try:
@@ -151,6 +157,8 @@ def face_identity_consistency(path: Path, max_samples: int = 60) -> dict[str, An
 
 def syncnet_lipsync(path_video: Path, path_audio: Path | None = None) -> dict[str, Any]:
     """Run optional SyncNet only when package, checkpoint and FFmpeg are configured."""
+    if not heavy_models_enabled():
+        return {"status": "skipped_low_memory", "note": "Optional SyncNet inference is disabled on this low-memory host."}
     weights = os.getenv("TRUTHLENS_SYNCNET_WEIGHTS", "").strip()
     if not weights or not Path(weights).is_file():
         return {"status": "model_weights_missing", "required_configuration": "TRUTHLENS_SYNCNET_WEIGHTS", "note": "No lip-sync score was produced because compatible SyncNet weights are not configured."}
