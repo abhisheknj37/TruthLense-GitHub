@@ -9,6 +9,8 @@ from typing import Any
 
 from PIL import Image, ImageOps
 
+from app.services.ml_runtime import heavy_models_enabled, skipped_model_result
+
 # This checkpoint is an older AI-art detector, not a general deepfake-photo
 # or pixel-manipulation detector. Keep it configurable and disclose its scope.
 MODEL_ID = os.getenv("TRUTHLENS_WHOLE_IMAGE_MODEL", "umm-maybe/AI-image-detector")
@@ -89,6 +91,8 @@ class WholeImageAIDetector:
                 raise RuntimeError(self.error) from exc
 
     def analyze(self, path: Path) -> dict[str, Any]:
+        if not heavy_models_enabled():
+            return skipped_model_result("whole-image", MODEL_ID)
         try:
             self._load()
             with Image.open(path) as source:
