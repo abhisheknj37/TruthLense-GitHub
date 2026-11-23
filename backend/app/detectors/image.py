@@ -9,10 +9,9 @@ from typing import Any
 
 import cv2
 import numpy as np
-import torch
-import torch.nn.functional as F
 from PIL import Image, ImageOps
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+
+from app.services.ml_runtime import heavy_models_enabled, skipped_model_result
 
 
 MODEL_ID = os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2")
@@ -20,6 +19,13 @@ IMAGE_MODEL_LICENSE = "Apache-2.0 (model card)"
 IMAGE_MODEL_SCOPE = "Research/education face-image classifier; not validated for forensic decisions."
 FAKE_THRESHOLD = float(os.getenv("TRUTHLENS_FAKE_THRESHOLD", "0.65"))
 REAL_THRESHOLD = float(os.getenv("TRUTHLENS_REAL_THRESHOLD", "0.35"))
+
+# Load the ML runtime only when an image is actually analyzed. This keeps the
+# API process small enough to start on constrained hosting instances.
+torch = None
+F = None
+AutoImageProcessor = None
+AutoModelForImageClassification = None
 
 
 def _uncertainty_band(fake_score: float) -> str:
@@ -52,7 +58,7 @@ class ImageDeepfakeDetector:
     def __init__(self) -> None:
         self.model = None
         self.processor = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = "cpu"
         self.lock = threading.Lock()
         self.load_error: str | None = None
         self.fake_index: int | None = None
@@ -66,6 +72,13 @@ class ImageDeepfakeDetector:
         return MODEL_ID
 
     def _load(self) -> None:
+        global torch, F, AutoImageProcessor, AutoModelForImageClassification
+        if torch is None:
+            import torch as torch_module
+            import torch.nn.functional as functional_module
+            from transformers import AutoImageProcessor as image_processor, AutoModelForImageClassification as image_model
+            torch, F = torch_module, functional_module
+            AutoImageProcessor, AutoModelForImageClassification = image_processor, image_model
         if self.model is not None:
             return
         if self.load_error:
@@ -260,6 +273,8 @@ class ImageDeepfakeDetector:
 
     def analyze_pil_frame(self, image: Image.Image, include_cam: bool = False) -> dict[str, Any]:
         """Run the same face-crop detector on an in-memory video frame."""
+        if not heavy_models_enabled():
+            return skipped_model_result("video-frame image", MODEL_ID)
         try:
             crops = self._face_crops(image)
             if not crops:
@@ -291,6 +306,8 @@ class ImageDeepfakeDetector:
             return {"status": "model_error", "model_name": MODEL_ID, "prediction": "inconclusive", "uncertainty_band": "unknown", "faces": [], "note": str(exc)}
 
     def analyze_image(self, path: Path, include_cam: bool = True) -> dict[str, Any]:
+        if not heavy_models_enabled():
+            return skipped_model_result("image", MODEL_ID)
         try:
             with Image.open(path) as raw:
                 image = ImageOps.exif_transpose(raw).convert("RGB")

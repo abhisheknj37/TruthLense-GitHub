@@ -100,11 +100,42 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         tesseract_display = "tesseract on PATH"
     if not tesseract_found:
         ocr_missing.append("Tesseract OCR executable")
+    ocr_languages = os.getenv("TRUTHLENS_OCR_LANGUAGES", "eng").strip() or "eng"
+    language_status = "not_checked"
+    missing_languages: list[str] = []
+    if tesseract_found and _module_available("pytesseract"):
+        try:
+            import pytesseract
+            if configured_tesseract:
+                pytesseract.pytesseract.tesseract_cmd = str(Path(configured_tesseract).expanduser())
+            pytesseract.get_tesseract_version()
+            installed_languages = set(pytesseract.get_languages(config=""))
+            missing_languages = sorted({
+                language.strip() for language in ocr_languages.split("+") if language.strip()
+            } - installed_languages)
+            language_status = "missing" if missing_languages else "available"
+        except Exception as exc:
+            language_status = "engine_error"
+            ocr_missing.append(f"Tesseract check failed: {type(exc).__name__}")
+    rapidocr_installed = _module_available("rapidocr_onnxruntime")
+    result["ocr_second_engine"] = {
+        "status": "ready_to_attempt" if rapidocr_installed else "optional_dependency_missing",
+        "engine": "RapidOCR",
+        "missing": [] if rapidocr_installed else ["rapidocr-onnxruntime"],
+        "note": "Independent OCR comparison is available when installed; agreement is not ground truth.",
+    }
+
+    tesseract_ready = not ocr_missing and language_status == "available"
     result["ocr"] = {
-        "status": "ready_to_attempt" if not ocr_missing else "needs_setup",
+        "status": "tesseract_ready" if tesseract_ready else "rapidocr_fallback_available" if rapidocr_installed else "needs_setup",
+        "primary_engine": "Tesseract OCR" if tesseract_ready else "RapidOCR" if rapidocr_installed else None,
+        "fallback_engine": "RapidOCR" if rapidocr_installed and tesseract_ready else None,
         "missing": ocr_missing,
         "executable": tesseract_display,
-        "note": "OCR runs on images and sampled video frames; verify extracted text against the source.",
+        "languages_requested": ocr_languages,
+        "language_status": language_status,
+        "missing_languages": missing_languages,
+        "note": "OCR runs on images and sampled video frames. RapidOCR fallback does not expose the same word-confidence score as the Tesseract quality gate; manually verify extracted text against the source.",
     }
 
     asr_model = os.getenv("TRUTHLENS_ASR_MODEL", "").strip()
@@ -125,6 +156,52 @@ def get_optional_integration_status() -> dict[str, dict[str, Any]]:
         "status": "network_required_at_request_time",
         "provider": "OpenAlex",
         "note": "Related scholarly candidates are returned for human review; no true/false verdict is generated.",
+    }
+
+    calibration_artifact = os.getenv("TRUTHLENS_CALIBRATION_ARTIFACT", "").strip()
+    pipeline_models = {
+        "image": os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2"),
+        "video": os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2"),
+        "audio": os.getenv("TRUTHLENS_AUDIO_MODEL", "Hemgg/Deepfake-audio-detection"),
+    }
+    if calibration_artifact:
+        from app.services.calibration_registry import load_approved_calibration
+        statuses = {
+            pipeline: load_approved_calibration(model_id, pipeline).get("status")
+            for pipeline, model_id in pipeline_models.items()
+        }
+    else:
+        statuses = {pipeline: "not_configured" for pipeline in pipeline_models}
+    result["calibration"] = {
+        "status": "configured" if calibration_artifact else "not_configured",
+        "artifact": Path(calibration_artifact).name if calibration_artifact else None,
+        "pipelines": statuses,
+        "note": "Runtime calibration only applies to an explicitly approved artifact with an exact checkpoint ID and modality match. Candidate artifacts are not applied.",
+    }
+
+    nli_model = os.getenv("TRUTHLENS_NLI_MODEL", "").strip()
+    result["semantic_review"] = {
+        "status": "configured_model_lazy_load" if nli_model else "not_configured",
+        "model": nli_model or None,
+        "note": "Configured NLI weights are loaded on first semantic comparison; outputs are uncalibrated candidate relationships, not verified claims.",
+    }
+    originals_dir = os.getenv("TRUTHLENS_ORIGINALS_DIR", "").strip()
+    originals_path = Path(originals_dir).expanduser() if originals_dir else Path(__file__).resolve().parents[2] / "data" / "originals"
+    try:
+        retention_days = max(1, min(int(os.getenv("TRUTHLENS_ORIGINAL_RETENTION_DAYS", "30")), 3650))
+    except ValueError:
+        retention_days = 30
+    result["original_evidence_retention"] = {
+        "status": "configured_private_directory" if originals_path.exists() else "directory_created_on_first_opt_in",
+        "directory_name": originals_path.name,
+        "retention_days": retention_days,
+        "user_opt_in_required": True,
+        "note": "Original bytes are retained only when the investigator opts in on a case. Downloads are owner-checked and SHA-256 revalidated.",
+    }
+    result["evidence_ledger_signing"] = {
+        "status": "hmac_enabled" if os.getenv("TRUTHLENS_LEDGER_HMAC_KEY", "") else "hmac_not_configured",
+        "key_id": os.getenv("TRUTHLENS_LEDGER_KEY_ID", "truthlens-ledger-key-1") if os.getenv("TRUTHLENS_LEDGER_HMAC_KEY", "") else None,
+        "note": "The HMAC secret is never returned. HMAC is a server-secret keyed tamper check, not a trusted external timestamp or third-party anchor.",
     }
 
     result["score_evaluation"] = {

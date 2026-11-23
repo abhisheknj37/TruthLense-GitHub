@@ -24,7 +24,7 @@ The optional `c2pa-python` SDK can read supported manifests and return validatio
 
 ## OCR and speech transcription
 
-OCR requires the optional `pytesseract` Python package and a separately installed Tesseract executable on the backend host. It runs on uploaded images and sampled video frames. OCR text can contain recognition errors.
+OCR prefers the optional `pytesseract` Python package and a separately installed Tesseract executable on the backend host. If these are missing but `rapidocr-onnxruntime` is installed, RapidOCR is used as a fallback for images and sampled video frames. It runs on uploaded images and sampled video frames. OCR text can contain recognition errors.
 
 Speech transcription is optional. Set `TRUTHLENS_ASR_MODEL` to a compatible local or approved Hugging Face ASR model. The first model load may download weights. Transcription can be inaccurate and must be checked against original audio.
 
@@ -44,14 +44,14 @@ The ledger is scoped using the authenticated Firebase UID. Hash-chain verificati
 
 ## Score evaluation and calibration
 
-Install `scikit-learn` from `requirements-forensics.txt` for the calibration utility. Prepare a labelled CSV with `label,score` columns (labels 0/1; fake-direction scores in [0,1]) and run from `backend/`:
+Install optional calibration dependencies with `pip install -r requirements-forensics.txt` when running the isotonic calibration utility. Prepare a labelled CSV with `label,score` columns (labels 0/1; fake-direction scores in [0,1]) and run from `backend/`:
 
 ```powershell
-python evaluate_scores.py labelled_scores.csv --threshold 0.65 --output evaluation-results.json
-python evaluate_calibration.py labelled_scores.csv --output calibration-results.json
+python evaluate_scores.py labelled_scores.csv --threshold 0.65 --group-column source_id --output evaluation-results.json
+python evaluate_calibration.py labelled_scores.csv --model-id "sakshamkr1/deitfake-v2" --pipeline image --group-column group_id --output calibration-image-candidate.json
 ```
 
-The score evaluator reports metrics for the supplied labels and threshold. The calibration utility fits an isotonic mapping on the first 70% and evaluates on the remaining 30%. Shuffle and split by independent source/video/person before using it; a random row split can leak near-duplicate material. These utilities do not automatically alter or calibrate the deployed model outputs. No benchmark dataset or calibration results are bundled.
+The score evaluator reports row-level metrics and, with `--group-column`, source-level metrics using one median score per source. The calibration utility requires `label,score,group_id`, aggregates to one median score per source group, rejects conflicting labels, performs a source-disjoint fit/held-out split and evaluates an unapproved candidate mapping. At least 60 independent source groups are required. These utilities do not automatically alter or calibrate deployed model outputs. No benchmark dataset or calibration results are bundled.
 
 ## Optional dependencies
 
@@ -62,6 +62,28 @@ cd backend
 
 Install the system Tesseract and FFmpeg executables separately where applicable. First-run model downloads may be large. All missing dependencies, weights and unsupported formats should remain visible as unavailable/inconclusive states.
 
+
+## OCR setup on Windows
+
+1. Install the Tesseract OCR Windows installer from the UB Mannheim Tesseract distribution page (the installer is maintained separately from this Python project).
+2. In a new PowerShell terminal, verify the executable:
+   ```powershell
+   tesseract --version
+   tesseract --list-langs
+   ```
+3. Install the Python wrapper from the backend virtual environment:
+   ```powershell
+   cd E:\TruthLense-GitHub\backend
+   .\.venv\Scripts\python.exe -m pip install pytesseract
+   ```
+4. Edit `backend/.env` and set the executable path if Tesseract is not on PATH:
+   ```dotenv
+   TRUTHLENS_TESSERACT_CMD=C:/Program Files/Tesseract-OCR/tesseract.exe
+   TRUTHLENS_OCR_LANGUAGES=eng
+   ```
+5. Restart FastAPI and run a new investigation. Existing reports are not reprocessed automatically.
+
+TruthLens checks both the executable and each requested language code. When Tesseract is unavailable, RapidOCR can serve as a fallback if installed; its result is marked unscored and is not treated as a second independent engine. Missing language traineddata is reported explicitly. Add another language only after its matching traineddata is installed, for example `eng+hin`. OCR output is best-effort text extraction and must be checked against the source image/frame.
 
 ## Windows optional-integration configuration
 
@@ -101,7 +123,14 @@ Edit `backend/.env` using paths that exist on the backend machine:
 
 Leave model paths blank until you have a compatible checkpoint. This repository does not bundle temporal-classifier or SyncNet weights. A filename alone does not establish checkpoint compatibility.
 
-The current C2PA adapter uses the installed SDK to read manifest and validation metadata. It does not expose a project-specific trust-store or trust-anchor path setting. Treat the returned validation data as something to review, not as a conclusion that a signer is trusted.
+The current C2PA adapter supports JPEG, PNG, WebP, MP4 and MOV inputs only. WebM is explicitly reported as `unsupported_format`; the presence of a WebM container does not imply that it can carry a supported C2PA manifest. Do not rename a WebM file to MP4 or infer that credentials are absent. The adapter uses the installed SDK to read manifest and validation metadata. It does not expose a project-specific trust-store or trust-anchor path setting. Treat the returned validation data as something to review, not as a conclusion that a signer is trusted.
+
+## Temporal model selection note
+
+Do not point `TRUTHLENS_TEMPORAL_MODEL` at an arbitrary `.pt` or `.pth` file. The current optional adapter expects a TorchScript model accepting RGB float32 input shaped `[1,T,3,224,224]` and requires exactly one scalar output. It reports that value as an unverified raw model output; it does not infer a class or probability from its numeric range. A model with a different architecture, frame sampling, normalization, output layout or label order is incompatible even if it is described as a video deepfake detector. Before integrating a checkpoint, verify its source, model card/paper, weights license, inference code, preprocessing, label mapping, supported video domain and independent cross-dataset evaluation. Keep it disabled until an adapter and tests match the exact checkpoint contract.
+
+A current candidate reviewed during development, FakeSTormer, is the official ICCV 2025 implementation and reports cross-dataset video-level AUC results, but its repository specifies an SNT academic license and an older CUDA/PyTorch/MMCV stack. It is not automatically suitable for inclusion in this project or a general Windows CPU deployment. Obtain permission/confirm intended-use terms and build a separately tested adapter before adoption. Its reported benchmark values are the authors' results, not TruthLens results.
+
 
 ### Check readiness from the app
 
@@ -114,3 +143,41 @@ After editing `.env`, restart FastAPI from the backend folder:
 Open [http://127.0.0.1:8000/api/capabilities](http://127.0.0.1:8000/api/capabilities). The response now includes `optional_integration_status`, with readiness and missing-prerequisite information. The frontend Settings page reads the same data and provides a Refresh button.
 
 A status such as `ready_to_attempt` only means the prerequisite checks passed. Actual inference can still fail due to checkpoint incompatibility, unsupported media, model downloads, device limits or runtime errors. Configure secrets only in local `.env` files or deployment secret storage; never commit credentials or model weights.
+
+
+## Plain-text source evidence and semantic comparison
+
+TruthLens accepts bounded UTF-8 `.txt` and `.md` evidence files (maximum 1 MB each). Text is treated as content only; no markup, links or scripts are executed. The imported source is attached to the case and participates in OCR/transcript/context comparisons.
+
+Optional sentence-pair NLI review can be enabled by setting `TRUTHLENS_NLI_MODEL=cross-encoder/nli-deberta-v3-base`. This Apache-2.0 English NLI checkpoint exposes contradiction, entailment and neutral labels. Its model card reports 92.38% SNLI test accuracy and 90.04% MNLI mismatched accuracy; these are checkpoint-reported benchmark results, not TruthLens results. The local NLI module compares sentence pairs in both directions and returns candidate relationships with raw uncalibrated softmax scores. It does not verify a claim, establish what happened, or replace source inspection. Model weights load lazily on first semantic comparison; without the configuration, TruthLens reports NLI as not configured and retains lexical comparisons.
+
+Model card: https://huggingface.co/cross-encoder/nli-deberta-v3-base
+
+
+## Original evidence retention and signed custody
+
+Original uploads are not retained unless the investigator checks the per-case retention option. Opted-in originals are stored under a private backend-only directory, separated by a SHA-256-derived owner folder, report UUID and asset UUID. The report records the storage key, digest, size, timestamp and expiry. Authenticated downloads re-check report ownership and the stored file digest. Deleting the case removes its originals. Configure `TRUTHLENS_ORIGINALS_DIR` to a private durable volume and `TRUTHLENS_ORIGINAL_RETENTION_DAYS` to the chosen retention period.
+
+The chain-of-custody API also exports a JSON manifest. Set a strong server-only `TRUTHLENS_LEDGER_HMAC_KEY` and `TRUTHLENS_LEDGER_KEY_ID` to add HMAC-SHA256 signatures over event hashes. Verification checks the local hash chain and HMAC signatures. This is stronger tamper evidence against edits by actors without the secret, but it is still not an independently timestamped or externally witnessed record. Never commit secrets or retained evidence directories.
+
+
+## Group-aware model-score calibration
+
+The calibration script requires a source-group column and uses a group-separated fit/held-out partition. It exports a candidate artifact containing the dataset SHA-256, model ID, pipeline, fit/held-out group counts, raw-vs-calibrated held-out metrics and the isotonic mapping. Candidate artifacts are never applied at runtime. An authorized reviewer must explicitly mark the artifact approved and record reviewer/time; runtime then checks the exact model ID and modality pipeline and rejects mismatches or insufficient held-out evidence.
+
+No labelled dataset or approved calibration artifact is bundled. Until project-specific validation is completed and approved, TruthLens must continue to report raw model outputs and heuristic review uncertainty as uncalibrated.
+
+
+### Runtime readiness and retained-original purge
+
+`GET /api/capabilities` reports the status of NLI, per-pipeline calibration, optional OCR/ASR, private original retention and custody HMAC signing. It does not download or execute optional models just to report readiness. Authenticated users can call `POST /api/cases/retention/purge-expired` to purge expired originals only inside their own private storage folder.
+
+
+Temporal adapter contract is intentionally strict: it accepts exactly one scalar output and reports it as an unverified raw value. A value in the numerical range [0,1] is not treated as a probability unless the checkpoint's output semantics have been independently documented and validated. Multi-logit or multi-class outputs are rejected rather than silently taking the first element.
+
+
+OpenAlex claim research requests the available abstract inverted index and reconstructs a bounded abstract excerpt where the record provides one. When local NLI is enabled, each extracted claim is compared bidirectionally with available candidate abstracts. The report displays source title, year, venue, DOI/link, excerpt and NLI candidate relationship. OpenAlex relevance and NLI labels are not fact verification; inspect the original paper and passage before drawing conclusions.
+
+
+## Source-level performance and calibration
+Use `evaluate_scores.py --group-column video_id` to report row-level and source-level performance. Source-level mode takes one median score per source, so repeated frames/windows do not inflate the effective test count. The calibration candidate utility applies the same source-group aggregation, needs at least 60 independent source groups, reports dataset SHA-256 and held-out group metrics, and never creates a deployment-approved artifact automatically.

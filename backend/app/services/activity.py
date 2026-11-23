@@ -295,3 +295,36 @@ def delete_user_report(user_uid: str, report_id: str) -> bool:
         except OSError:
             pass
     return True
+
+def save_ocr_correction(
+    *, user_uid: str, report_id: str, asset_id: str, corrected_text: str
+) -> dict[str, Any]:
+    """Persist investigator-corrected OCR separately from raw extraction."""
+    text = corrected_text.strip()
+    if len(text) > 12000:
+        raise ValueError("Corrected text must be 12,000 characters or fewer.")
+    with _connection() as connection:
+        row = connection.execute(
+            "SELECT report_json FROM case_reports WHERE user_uid = ? AND report_id = ?",
+            (user_uid, report_id),
+        ).fetchone()
+        if row is None:
+            raise LookupError("Investigation not found.")
+        report = json.loads(row["report_json"])
+        asset = next((item for item in report.get("assets", []) if item.get("asset_id") == asset_id), None)
+        if asset is None:
+            raise LookupError("Evidence item not found.")
+        extraction = asset.setdefault("text_extraction", {})
+        correction = {
+            "text": text,
+            "reviewer_uid": user_uid,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "human_investigator",
+        }
+        extraction["investigator_correction"] = correction
+        connection.execute(
+            "UPDATE case_reports SET report_json = ? WHERE user_uid = ? AND report_id = ?",
+            (json.dumps(report, separators=(",", ":")), user_uid, report_id),
+        )
+    return correction
+
