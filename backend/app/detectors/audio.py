@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 
+from app.services.ml_runtime import heavy_models_enabled, skipped_model_result
+
 
 MODEL_ID = os.getenv("TRUTHLENS_AUDIO_MODEL", "Hemgg/Deepfake-audio-detection")
 MODEL_LICENSE = "Apache-2.0 (Hugging Face model card)"
@@ -83,6 +85,8 @@ class AudioDeepfakeDetector:
                 raise RuntimeError(self.load_error) from exc
 
     def analyze(self, path: Path) -> dict[str, Any]:
+        if not heavy_models_enabled():
+            return skipped_model_result("audio", MODEL_ID)
         try:
             import librosa
             self._load()
