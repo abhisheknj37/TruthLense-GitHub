@@ -9,10 +9,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-import torch
-import torch.nn.functional as F
 from PIL import Image, ImageOps
-from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 
 MODEL_ID = os.getenv("TRUTHLENS_IMAGE_MODEL", "sakshamkr1/deitfake-v2")
@@ -20,6 +17,13 @@ IMAGE_MODEL_LICENSE = "Apache-2.0 (model card)"
 IMAGE_MODEL_SCOPE = "Research/education face-image classifier; not validated for forensic decisions."
 FAKE_THRESHOLD = float(os.getenv("TRUTHLENS_FAKE_THRESHOLD", "0.65"))
 REAL_THRESHOLD = float(os.getenv("TRUTHLENS_REAL_THRESHOLD", "0.35"))
+
+# Load the ML runtime only when an image is actually analyzed. This keeps the
+# API process small enough to start on constrained hosting instances.
+torch = None
+F = None
+AutoImageProcessor = None
+AutoModelForImageClassification = None
 
 
 def _uncertainty_band(fake_score: float) -> str:
@@ -52,7 +56,7 @@ class ImageDeepfakeDetector:
     def __init__(self) -> None:
         self.model = None
         self.processor = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = "cpu"
         self.lock = threading.Lock()
         self.load_error: str | None = None
         self.fake_index: int | None = None
@@ -66,6 +70,13 @@ class ImageDeepfakeDetector:
         return MODEL_ID
 
     def _load(self) -> None:
+        global torch, F, AutoImageProcessor, AutoModelForImageClassification
+        if torch is None:
+            import torch as torch_module
+            import torch.nn.functional as functional_module
+            from transformers import AutoImageProcessor as image_processor, AutoModelForImageClassification as image_model
+            torch, F = torch_module, functional_module
+            AutoImageProcessor, AutoModelForImageClassification = image_processor, image_model
         if self.model is not None:
             return
         if self.load_error:
